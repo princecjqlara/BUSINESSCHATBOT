@@ -29,7 +29,7 @@ interface PipelineStage {
 }
 
 // Get or create a lead record for a sender
-export async function getOrCreateLead(senderId: string, name?: string): Promise<Lead | null> {
+export async function getOrCreateLead(senderId: string, pageAccessToken?: string): Promise<Lead | null> {
     try {
         // Check if lead exists
         const { data: existing, error: fetchError } = await supabase
@@ -40,6 +40,26 @@ export async function getOrCreateLead(senderId: string, name?: string): Promise<
 
         if (existing) {
             return existing as Lead;
+        }
+
+        // Fetch user profile from Facebook if we have a token
+        let userName: string | null = null;
+        let profilePic: string | null = null;
+
+        if (pageAccessToken) {
+            try {
+                const profileRes = await fetch(
+                    `https://graph.facebook.com/v21.0/${senderId}?fields=first_name,last_name,name,profile_pic&access_token=${pageAccessToken}`
+                );
+                if (profileRes.ok) {
+                    const profile = await profileRes.json();
+                    userName = profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || null;
+                    profilePic = profile.profile_pic || null;
+                    console.log('Fetched Facebook profile for lead:', userName);
+                }
+            } catch (profileError) {
+                console.error('Error fetching Facebook profile:', profileError);
+            }
         }
 
         // Get the default "New Lead" stage
@@ -54,7 +74,8 @@ export async function getOrCreateLead(senderId: string, name?: string): Promise<
             .from('leads')
             .insert({
                 sender_id: senderId,
-                name: name || null,
+                name: userName,
+                profile_pic: profilePic,
                 current_stage_id: defaultStage?.id || null,
                 message_count: 0,
                 last_message_at: new Date().toISOString(),
@@ -73,6 +94,7 @@ export async function getOrCreateLead(senderId: string, name?: string): Promise<
         return null;
     }
 }
+
 
 // Increment message count for a lead
 export async function incrementMessageCount(leadId: string): Promise<number> {

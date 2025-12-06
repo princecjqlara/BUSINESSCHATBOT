@@ -126,9 +126,18 @@ export default function StageColumn({ stage, onMoveLead, allStages }: StageColum
                                 </div>
                             </div>
 
-                            {/* AI Reason */}
+                            {/* AI Reason - truncated */}
                             {lead.ai_classification_reason && (
-                                <p className="text-xs text-gray-500 mb-3 italic line-clamp-2">
+                                <p
+                                    className="text-xs text-gray-500 mb-3 italic overflow-hidden"
+                                    style={{
+                                        display: '-webkit-box',
+                                        WebkitLineClamp: 2,
+                                        WebkitBoxOrient: 'vertical',
+                                        maxWidth: '100%',
+                                    }}
+                                    title={lead.ai_classification_reason}
+                                >
                                     "{lead.ai_classification_reason}"
                                 </p>
                             )}

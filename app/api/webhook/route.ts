@@ -157,8 +157,12 @@ async function handleMessage(sender_psid: string, received_message: string) {
     // Process message and send response
     try {
         // === AUTO-PIPELINE INTEGRATION ===
+        // Get page access token for profile fetching
+        const settings = await getSettings();
+        const pageToken = settings.facebook_page_access_token || process.env.FACEBOOK_PAGE_ACCESS_TOKEN;
+
         // Track the lead and check if stage analysis is needed
-        const lead = await getOrCreateLead(sender_psid);
+        const lead = await getOrCreateLead(sender_psid, pageToken);
         if (lead) {
             const messageCount = await incrementMessageCount(lead.id);
             console.log(`Lead ${lead.id} message count: ${messageCount}`);
@@ -173,6 +177,7 @@ async function handleMessage(sender_psid: string, received_message: string) {
             }
         }
         // === END AUTO-PIPELINE ===
+
 
         const responseText = await getBotResponse(received_message, sender_psid);
         console.log('Bot response generated:', responseText.substring(0, 100) + '...');
