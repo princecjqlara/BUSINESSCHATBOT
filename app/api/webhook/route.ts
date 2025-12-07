@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { waitUntil } from '@vercel/functions';
-import { getBotResponse } from '@/app/lib/chatService';
+import { getBotResponse, ImageContext } from '@/app/lib/chatService';
 import { supabase } from '@/app/lib/supabase';
 import { getOrCreateLead, incrementMessageCount, shouldAnalyzeStage, analyzeAndUpdateStage, moveLeadToReceiptStage } from '@/app/lib/pipelineService';
 import { analyzeImageForReceipt, isConfirmedReceipt } from '@/app/lib/receiptDetectionService';
@@ -161,13 +161,23 @@ export async function POST(req: Request) {
                 }
 
                 if (webhook_event.message) {
-                    // Handle image attachments for receipt detection
+                    const hasImageAttachment = webhook_event.message.attachments?.some(
+                        (att: { type: string }) => att.type === 'image'
+                    );
+                    const messageText = webhook_event.message.text;
+
+                    // Handle image attachments - pass any accompanying text to the image handler
                     if (webhook_event.message.attachments) {
                         for (const attachment of webhook_event.message.attachments) {
                             if (attachment.type === 'image' && attachment.payload?.url) {
                                 console.log('Image attachment detected:', attachment.payload.url.substring(0, 100));
                                 waitUntil(
-                                    handleImageMessage(sender_psid, attachment.payload.url, recipient_psid).catch(err => {
+                                    handleImageMessage(
+                                        sender_psid,
+                                        attachment.payload.url,
+                                        recipient_psid,
+                                        messageText // Pass accompanying text
+                                    ).catch(err => {
                                         console.error('Error handling image message:', err);
                                     })
                                 );
@@ -175,13 +185,14 @@ export async function POST(req: Request) {
                         }
                     }
 
-                    // Handle text messages
-                    if (webhook_event.message.text) {
-                        console.log('Message text:', webhook_event.message.text);
+                    // Handle text messages ONLY if there's no image attachment
+                    // (if there's an image, the image handler already processes the text)
+                    if (messageText && !hasImageAttachment) {
+                        console.log('Message text:', messageText);
                         // Use waitUntil to ensure Vercel keeps the function alive
                         // until the message is fully processed and responded to
                         waitUntil(
-                            handleMessage(sender_psid, webhook_event.message.text, recipient_psid).catch(err => {
+                            handleMessage(sender_psid, messageText, recipient_psid).catch(err => {
                                 console.error('Error handling message:', err);
                             })
                         );
@@ -270,9 +281,16 @@ async function handleMessage(sender_psid: string, received_message: string, page
     }
 }
 
-// Handle image messages for receipt detection
-async function handleImageMessage(sender_psid: string, imageUrl: string, pageId?: string) {
-    console.log('handleImageMessage called, analyzing image for receipt...');
+// Handle image messages - analyze and pass context to chatbot for intelligent response
+async function handleImageMessage(sender_psid: string, imageUrl: string, pageId?: string, accompanyingText?: string) {
+    console.log('handleImageMessage called, analyzing image...');
+
+    // Check if human takeover is active
+    const takeoverActive = await isTakeoverActive(sender_psid);
+    if (takeoverActive) {
+        console.log('Human takeover active for', sender_psid, '- skipping AI response for image');
+        return;
+    }
 
     try {
         // Get page token for this specific page
@@ -288,27 +306,47 @@ async function handleImageMessage(sender_psid: string, imageUrl: string, pageId?
         // Send typing indicator while analyzing
         await sendTypingIndicator(sender_psid, true, pageId);
 
-        // Analyze the image for receipt
+        // Analyze the image
         const result = await analyzeImageForReceipt(imageUrl);
-        console.log('Receipt detection result:', result);
+        console.log('Image analysis result:', result);
 
-        // If high-confidence receipt detected, move to receipt stage
+        // Build image context for the chatbot
+        const imageContext: ImageContext = {
+            isReceipt: result.isReceipt,
+            confidence: result.confidence,
+            details: result.details,
+            extractedAmount: result.extractedAmount,
+            extractedDate: result.extractedDate,
+            imageUrl: imageUrl
+        };
+
+        // If high-confidence receipt detected, also move to receipt stage
         if (isConfirmedReceipt(result)) {
             console.log('Receipt confirmed! Moving lead to payment stage...');
-
             await moveLeadToReceiptStage(lead.id, imageUrl, result.details || 'Receipt detected by AI');
-
-            // Send confirmation message to customer
-            await callSendAPI(sender_psid, {
-                text: "Salamat po! Natanggap na namin ang inyong proof of payment. I-process na namin ito at babalikan kayo shortly. 🙏"
-            }, pageId);
-        } else {
-            console.log('Image is not a receipt (confidence:', result.confidence, ')');
-            // Optionally respond to non-receipt images
-            // For now, we'll let the bot handle it naturally if there's accompanying text
         }
+
+        // Increment message count for the lead
+        await incrementMessageCount(lead.id);
+
+        // Build a user message that includes any accompanying text
+        const userMessage = accompanyingText
+            ? `[Customer sent an image with message: "${accompanyingText}"]`
+            : "[Customer sent an image]";
+
+        // Get chatbot response with image context
+        const responseText = await getBotResponse(userMessage, sender_psid, imageContext);
+        console.log('Bot response for image:', responseText.substring(0, 100) + '...');
+
+        // Send the AI's response
+        await callSendAPI(sender_psid, { text: responseText }, pageId);
+
     } catch (error) {
         console.error('Error in handleImageMessage:', error);
+        // Send a fallback response on error
+        await callSendAPI(sender_psid, {
+            text: "Nakita ko po ang image niyo. May tanong ba kayo tungkol dito? 😊"
+        }, pageId);
     } finally {
         await sendTypingIndicator(sender_psid, false, pageId);
     }

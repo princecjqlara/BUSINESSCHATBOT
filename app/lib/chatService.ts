@@ -155,7 +155,21 @@ function storeMessageAsync(senderId: string, role: 'user' | 'assistant', content
     })();
 }
 
-export async function getBotResponse(userMessage: string, senderId: string = 'web_default'): Promise<string> {
+// Image context type for passing image analysis to the chatbot
+export interface ImageContext {
+    isReceipt: boolean;
+    confidence: number;
+    details?: string;
+    extractedAmount?: string;
+    extractedDate?: string;
+    imageUrl?: string;
+}
+
+export async function getBotResponse(
+    userMessage: string,
+    senderId: string = 'web_default',
+    imageContext?: ImageContext
+): Promise<string> {
     const startTime = Date.now();
 
     // Read bot configuration from database (cached)
@@ -208,6 +222,54 @@ Do NOT make up prices or add details not in the reference data.
         systemPrompt += `NOTE: No reference data available. If asked for specific prices or details, say "Ipa-check ko muna sa team."
 
 `;
+    }
+
+    // Add image context if customer sent an image
+    if (imageContext) {
+        systemPrompt += `IMAGE ANALYSIS (Customer sent an image):
+`;
+        if (imageContext.isReceipt && imageContext.confidence >= 0.7) {
+            systemPrompt += `- This appears to be a RECEIPT/PROOF OF PAYMENT (${Math.round(imageContext.confidence * 100)}% confidence)
+`;
+            if (imageContext.details) {
+                systemPrompt += `- Details: ${imageContext.details}
+`;
+            }
+            if (imageContext.extractedAmount) {
+                systemPrompt += `- Amount shown: ${imageContext.extractedAmount}
+`;
+            }
+            if (imageContext.extractedDate) {
+                systemPrompt += `- Date: ${imageContext.extractedDate}
+`;
+            }
+            systemPrompt += `
+INSTRUCTION: Thank the customer for their payment proof. Confirm you received it and will process it. Be warm and appreciative.
+
+`;
+        } else if (imageContext.isReceipt) {
+            systemPrompt += `- This might be a receipt but confidence is low (${Math.round(imageContext.confidence * 100)}%)
+`;
+            if (imageContext.details) {
+                systemPrompt += `- What I see: ${imageContext.details}
+`;
+            }
+            systemPrompt += `
+INSTRUCTION: Politely ask the customer if this is their payment proof. If the image is unclear, ask them to resend a clearer photo.
+
+`;
+        } else {
+            systemPrompt += `- This does NOT appear to be a receipt (${Math.round(imageContext.confidence * 100)}% confidence)
+`;
+            if (imageContext.details) {
+                systemPrompt += `- What I see: ${imageContext.details}
+`;
+            }
+            systemPrompt += `
+INSTRUCTION: Respond naturally about the image. If they might be trying to send payment proof, guide them on what to send.
+
+`;
+        }
     }
 
     // Build messages array with history
