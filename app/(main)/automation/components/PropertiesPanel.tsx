@@ -100,7 +100,7 @@ export default function PropertiesPanel({ selectedNode, onClose, onUpdate, onDel
                         type="text"
                         value={label}
                         onChange={(e) => setLabel(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                        className="w-full px-3 py-2 border border-gray-200 text-black rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                     />
                 </div>
 
@@ -110,7 +110,7 @@ export default function PropertiesPanel({ selectedNode, onClose, onUpdate, onDel
                         value={description}
                         onChange={(e) => setDescription(e.target.value)}
                         rows={2}
-                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 resize-none"
+                        className="w-full px-3 py-2 border border-gray-200 text-black rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 resize-none"
                     />
                 </div>
 
@@ -125,7 +125,7 @@ export default function PropertiesPanel({ selectedNode, onClose, onUpdate, onDel
                             <select
                                 value={messageMode}
                                 onChange={(e) => setMessageMode(e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white"
+                                className="w-full px-3 py-2 border border-gray-200 text-black rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white"
                             >
                                 <option value="custom">Custom Message</option>
                                 <option value="ai">AI-Generated</option>
@@ -140,7 +140,7 @@ export default function PropertiesPanel({ selectedNode, onClose, onUpdate, onDel
                                 onChange={(e) => setMessageText(e.target.value)}
                                 rows={4}
                                 placeholder={messageMode === 'ai' ? 'Describe what the message should say...' : 'Type your message here...'}
-                                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 resize-none"
+                                className="w-full px-3 py-2 border border-gray-200 text-black rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 resize-none"
                             />
                             <p className="text-xs text-gray-400 mt-1">
                                 {messageMode === 'ai'
@@ -157,7 +157,7 @@ export default function PropertiesPanel({ selectedNode, onClose, onUpdate, onDel
                         <select
                             value={triggerStageId}
                             onChange={(e) => setTriggerStageId(e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white"
+                            className="w-full px-3 py-2 border border-gray-200 text-black rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white"
                         >
                             <option value="">Select a stage...</option>
                             {Array.isArray(stages) && stages.map((stage) => (
@@ -180,7 +180,7 @@ export default function PropertiesPanel({ selectedNode, onClose, onUpdate, onDel
                                 type="number"
                                 value={waitDuration}
                                 onChange={(e) => setWaitDuration(e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                className="w-full px-3 py-2 border border-gray-200 text-black rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                                 placeholder="5"
                                 min="1"
                             />
@@ -190,7 +190,7 @@ export default function PropertiesPanel({ selectedNode, onClose, onUpdate, onDel
                             <select
                                 value={waitUnit}
                                 onChange={(e) => setWaitUnit(e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white"
+                                className="w-full px-3 py-2 border border-gray-200 text-black rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white"
                             >
                                 <option value="minutes">Minutes</option>
                                 <option value="hours">Hours</option>
@@ -208,7 +208,7 @@ export default function PropertiesPanel({ selectedNode, onClose, onUpdate, onDel
                             value={stopBotReason}
                             onChange={(e) => setStopBotReason(e.target.value)}
                             placeholder="e.g. User opted out"
-                            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                            className="w-full px-3 py-2 border border-gray-200 text-black rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                         />
                     </div>
                 )}
@@ -220,7 +220,7 @@ export default function PropertiesPanel({ selectedNode, onClose, onUpdate, onDel
                             <select
                                 value={conditionType}
                                 onChange={(e) => setConditionType(e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white"
+                                className="w-full px-3 py-2 border border-gray-200 text-black rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white"
                             >
                                 <option value="has_replied">User Has Replied?</option>
                                 <option value="ai_rule">Custom AI Rule</option>
@@ -234,7 +234,7 @@ export default function PropertiesPanel({ selectedNode, onClose, onUpdate, onDel
                                     onChange={(e) => setConditionRule(e.target.value)}
                                     rows={2}
                                     placeholder="e.g. Check if user is interested"
-                                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 resize-none"
+                                    className="w-full px-3 py-2 border border-gray-200 text-black rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 resize-none"
                                 />
                             </div>
                         )}
