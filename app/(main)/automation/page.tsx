@@ -75,9 +75,16 @@ function AutomationPageContent() {
         }
     }, [workflowIdFromUrl]);
 
+    // Save state management
+    const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+
     // Called whenever workflow data changes (from canvas auto-save)
     const handleWorkflowChange = (workflowData: any) => {
         currentWorkflowDataRef.current = workflowData;
+        // Reset saved status if user makes changes
+        if (saveStatus === 'saved') {
+            setSaveStatus('idle');
+        }
     };
 
     // Explicit save button handler
@@ -90,6 +97,7 @@ function AutomationPageContent() {
     };
 
     const handleSave = async (workflowData: any) => {
+        setSaveStatus('saving');
         setIsSaving(true);
         try {
             // Extract trigger_stage_id from trigger node
@@ -122,8 +130,19 @@ function AutomationPageContent() {
                 const data = await res.json();
                 setWorkflowId(data.id);
             }
+
+            // Show saved status
+            setSaveStatus('saved');
+
+            // Reset back to idle after 2 seconds
+            setTimeout(() => {
+                setSaveStatus(prev => prev === 'saved' ? 'idle' : prev);
+            }, 2000);
+
         } catch (error) {
             console.error('Error saving workflow:', error);
+            setSaveStatus('error');
+            setTimeout(() => setSaveStatus('idle'), 3000);
         } finally {
             setIsSaving(false);
         }
@@ -317,11 +336,16 @@ function AutomationPageContent() {
                     </button>
                     <button
                         onClick={handleSaveClick}
-                        disabled={isSaving}
-                        className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-colors shadow-sm bg-green-600 hover:bg-green-700 text-white disabled:opacity-50"
+                        disabled={saveStatus === 'saving'}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-colors shadow-sm text-white disabled:opacity-50 ${saveStatus === 'saved'
+                                ? 'bg-green-700 hover:bg-green-800'
+                                : saveStatus === 'error'
+                                    ? 'bg-red-600 hover:bg-red-700'
+                                    : 'bg-green-600 hover:bg-green-700'
+                            }`}
                     >
                         <Save size={16} />
-                        {isSaving ? 'Saving...' : 'Save'}
+                        {saveStatus === 'saving' ? 'Saving...' : saveStatus === 'saved' ? 'Saved!' : saveStatus === 'error' ? 'Error!' : 'Save'}
                     </button>
                     <button
                         onClick={() => handlePublish()}

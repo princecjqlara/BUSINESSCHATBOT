@@ -1,8 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { MoreHorizontal, MessageCircle, Clock, ChevronDown, GripVertical } from 'lucide-react';
+import { MoreHorizontal } from 'lucide-react';
 import { Droppable, Draggable } from '@hello-pangea/dnd';
+import LeadCard from './LeadCard';
 
 interface Lead {
     id: string;
@@ -27,41 +28,29 @@ interface StageColumnProps {
     allStages: Stage[];
 }
 
-function formatTimeAgo(dateString: string | null): string {
-    if (!dateString) return 'Unknown';
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMins / 60);
-    const diffDays = Math.floor(diffHours / 24);
-
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    return `${diffDays}d ago`;
-}
-
 export default function StageColumn({ stage, onMoveLead, allStages }: StageColumnProps) {
     const [moveMenuOpen, setMoveMenuOpen] = useState<string | null>(null);
 
     return (
-        <div className="w-[320px] max-w-[320px] flex-shrink-0 flex flex-col h-full bg-gray-50/50 rounded-xl group">
+        <div className="w-[320px] max-w-[320px] flex-shrink-0 flex flex-col h-full bg-gray-50/50 rounded-xl group border border-transparent hover:border-gray-200 transition-colors">
             {/* Stage Header */}
-            <div className="flex items-center justify-between p-4 border-b border-gray-100">
+            <div className="flex items-center justify-between p-4 border-b border-gray-100 bg-white rounded-t-xl">
                 <div className="flex items-center gap-3">
                     <div
-                        className="w-3 h-3 rounded-full"
+                        className="w-3 h-3 rounded-full ring-2 ring-offset-2 ring-transparent group-hover:ring-gray-100 transition-all"
                         style={{ backgroundColor: stage.color }}
                     ></div>
-                    <h3 className="font-bold text-gray-900 tracking-tight">{stage.name}</h3>
-                    <span className="text-xs font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+                    <h3 className="font-bold text-gray-900 tracking-tight text-base">{stage.name}</h3>
+                    <span className="text-xs font-bold text-gray-500 bg-gray-100 px-2.5 py-1 rounded-full border border-gray-200">
                         {stage.leads.length}
                     </span>
                 </div>
-                <button className="p-1.5 text-gray-400 hover:text-gray-900 opacity-0 group-hover:opacity-100 transition-opacity rounded hover:bg-white">
-                    <MoreHorizontal size={16} />
-                </button>
+                <div className="flex items-center gap-1">
+                    <button className="p-1.5 text-gray-400 hover:text-gray-900 opacity-0 group-hover:opacity-100 transition-opacity rounded-md hover:bg-gray-100">
+                        <MoreHorizontal size={16} />
+                    </button>
+                    {/* Placeholder for "Add" button if we want one per column */}
+                </div>
             </div>
 
             {/* Leads - Droppable Area */}
@@ -74,110 +63,61 @@ export default function StageColumn({ stage, onMoveLead, allStages }: StageColum
                             }`}
                     >
                         {stage.leads.length === 0 && !snapshot.isDraggingOver ? (
-                            <div className="h-24 border-2 border-dashed border-gray-100 rounded-lg flex items-center justify-center text-gray-300 text-sm font-medium">
-                                No leads
+                            <div className="h-32 border-2 border-dashed border-gray-100 rounded-xl flex flex-col items-center justify-center text-center p-4 gap-2 group/empty">
+                                <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-300 group-hover/empty:bg-gray-100 group-hover/empty:text-gray-400 transition-colors">
+                                    <MoreHorizontal size={20} />
+                                </div>
+                                <span className="text-sm font-medium text-gray-400">No leads in this stage</span>
                             </div>
                         ) : (
                             stage.leads.map((lead, index) => (
-                                <Draggable key={lead.id} draggableId={lead.id} index={index}>
-                                    {(provided, snapshot) => (
-                                        <div
-                                            ref={provided.innerRef}
-                                            {...provided.draggableProps}
-                                            className={`bg-white rounded-lg border p-4 transition-all cursor-pointer group/card w-full max-w-full overflow-hidden ${snapshot.isDragging
-                                                    ? 'shadow-lg border-blue-200 rotate-1'
-                                                    : 'border-gray-100 hover:shadow-md hover:border-gray-200'
-                                                }`}
-                                        >
-                                            <div className="flex items-start justify-between mb-3">
-                                                <div className="flex items-center gap-2">
-                                                    {/* Drag Handle */}
-                                                    <div
-                                                        {...provided.dragHandleProps}
-                                                        className="p-1 text-gray-300 hover:text-gray-500 cursor-grab active:cursor-grabbing"
-                                                    >
-                                                        <GripVertical size={14} />
-                                                    </div>
-                                                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center text-white text-xs font-bold">
-                                                        {(lead.name || lead.sender_id)?.[0]?.toUpperCase() || '?'}
-                                                    </div>
-                                                    <div>
-                                                        <p className="text-sm font-semibold text-gray-900">
-                                                            {lead.name || `Lead ${lead.sender_id.slice(-6)}`}
-                                                        </p>
-                                                        <p className="text-xs text-gray-400">
-                                                            {lead.sender_id.slice(-8)}
-                                                        </p>
-                                                    </div>
+                                <div key={lead.id} className="relative">
+                                    <LeadCard
+                                        lead={lead}
+                                        index={index}
+                                        onMoveClick={(id) => setMoveMenuOpen(moveMenuOpen === id ? null : id)}
+                                        moveMenuOpen={moveMenuOpen === lead.id}
+                                    />
+
+                                    {/* Context Menu for Moving - Positioned relative to the card wrapper */}
+                                    {moveMenuOpen === lead.id && (
+                                        <>
+                                            {/* Backdrop to close menu */}
+                                            <div
+                                                className="fixed inset-0 z-40"
+                                                onClick={() => setMoveMenuOpen(null)}
+                                            ></div>
+
+                                            <div className="absolute right-2 top-10 mt-1 w-48 bg-white rounded-xl shadow-xl border border-gray-100 py-1 z-50 animate-in fade-in zoom-in-95 duration-100">
+                                                <div className="px-3 py-2 border-b border-gray-50">
+                                                    <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider">Move to Stage</p>
                                                 </div>
-
-                                                {/* Move dropdown */}
-                                                <div className="relative">
-                                                    <button
-                                                        onClick={() => setMoveMenuOpen(moveMenuOpen === lead.id ? null : lead.id)}
-                                                        className="p-1 text-gray-400 hover:text-gray-900 opacity-0 group-hover/card:opacity-100 transition-opacity rounded hover:bg-gray-100"
-                                                    >
-                                                        <ChevronDown size={14} />
-                                                    </button>
-
-                                                    {moveMenuOpen === lead.id && (
-                                                        <div className="absolute right-0 top-full mt-1 w-40 bg-white rounded-lg shadow-lg border border-gray-100 py-1 z-10">
-                                                            <p className="px-3 py-1.5 text-xs text-gray-400 font-medium">Move to</p>
-                                                            {allStages
-                                                                .filter(s => s.id !== stage.id)
-                                                                .map(s => (
-                                                                    <button
-                                                                        key={s.id}
-                                                                        onClick={() => {
-                                                                            onMoveLead(lead.id, s.id);
-                                                                            setMoveMenuOpen(null);
-                                                                        }}
-                                                                        className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-                                                                    >
-                                                                        <div
-                                                                            className="w-2 h-2 rounded-full"
-                                                                            style={{ backgroundColor: s.color }}
-                                                                        ></div>
-                                                                        {s.name}
-                                                                    </button>
-                                                                ))
-                                                            }
-                                                        </div>
-                                                    )}
+                                                <div className="p-1 max-h-[200px] overflow-y-auto">
+                                                    {allStages
+                                                        .filter(s => s.id !== stage.id)
+                                                        .map(s => (
+                                                            <button
+                                                                key={s.id}
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    onMoveLead(lead.id, s.id);
+                                                                    setMoveMenuOpen(null);
+                                                                }}
+                                                                className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 hover:text-gray-900 rounded-lg flex items-center gap-2 transition-colors"
+                                                            >
+                                                                <div
+                                                                    className="w-2 h-2 rounded-full ring-2 ring-gray-100"
+                                                                    style={{ backgroundColor: s.color }}
+                                                                ></div>
+                                                                <span className="font-medium truncate">{s.name}</span>
+                                                            </button>
+                                                        ))
+                                                    }
                                                 </div>
                                             </div>
-
-                                            {/* AI Reason - truncated */}
-                                            {lead.ai_classification_reason && (
-                                                <p
-                                                    className="text-xs text-gray-500 mb-3 italic overflow-hidden break-words"
-                                                    style={{
-                                                        display: '-webkit-box',
-                                                        WebkitLineClamp: 2,
-                                                        WebkitBoxOrient: 'vertical',
-                                                        wordBreak: 'break-word',
-                                                        overflowWrap: 'break-word',
-                                                    }}
-                                                    title={lead.ai_classification_reason}
-                                                >
-                                                    &quot;{lead.ai_classification_reason}&quot;
-                                                </p>
-                                            )}
-
-                                            {/* Stats */}
-                                            <div className="flex items-center gap-4 text-xs text-gray-400">
-                                                <span className="flex items-center gap-1">
-                                                    <MessageCircle size={12} />
-                                                    {lead.message_count}
-                                                </span>
-                                                <span className="flex items-center gap-1">
-                                                    <Clock size={12} />
-                                                    {formatTimeAgo(lead.last_message_at)}
-                                                </span>
-                                            </div>
-                                        </div>
+                                        </>
                                     )}
-                                </Draggable>
+                                </div>
                             ))
                         )}
                         {provided.placeholder}

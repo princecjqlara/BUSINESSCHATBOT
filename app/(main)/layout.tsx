@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import Sidebar from "../components/Sidebar";
 
 export const metadata: Metadata = {
-    title: "Aphelion Photon",
-    description: "AI Knowledge Base Chatbot",
+    title: "WhatStage? AI Chat & Pipeline",
+    description: "AI Chat & Pipeline",
 };
 
 export default function MainLayout({

@@ -184,7 +184,7 @@ function SettingsContent() {
                         </div>
                         <button
                             onClick={handleFacebookLogin}
-                            className="flex items-center gap-2 px-8 py-3 bg-gray-900 text-white rounded-full hover:bg-black hover:shadow-lg transition-all font-medium text-sm tracking-wide active:scale-95"
+                            className="flex items-center gap-2 px-8 py-3 bg-teal-600 text-white rounded-full hover:bg-black hover:shadow-lg transition-all font-medium text-sm tracking-wide active:scale-95"
                         >
                             <Facebook size={18} />
                             Connect New Page

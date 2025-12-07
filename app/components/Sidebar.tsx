@@ -32,7 +32,7 @@ export default function Sidebar() {
     };
 
     return (
-        <div className="w-16 bg-[#1C1C1C] h-screen flex flex-col items-center py-6 text-gray-400 border-r border-gray-800 flex-shrink-0">
+        <div className="w-16 bg-[#0d2116] h-screen flex flex-col items-center py-6 text-gray-400 border-r border-[#1a3828] flex-shrink-0">
             <div className="mb-8">
                 <Link href="/">
                     <div className="w-8 h-8 bg-gradient-to-br from-orange-400 to-pink-500 rounded-lg flex items-center justify-center text-white font-bold cursor-pointer">

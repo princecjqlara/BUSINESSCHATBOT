@@ -29,7 +29,30 @@ export async function GET() {
 export async function POST(req: Request) {
     try {
         const body = await req.json();
-        const { name, trigger_stage_id, workflow_data } = body;
+        const { name, trigger_stage_id, workflow_data, prompt } = body;
+
+        let finalName = name;
+        let finalWorkflowData = workflow_data;
+
+        // If prompt is provided, generate workflow using AI
+        if (prompt) {
+            try {
+                // Dynamic import to avoid circular dependencies if any
+                const { generateWorkflow } = await import('@/app/lib/workflowGenerator');
+                const generated = await generateWorkflow(prompt);
+
+                finalName = generated.name || name || 'AI Generated Workflow';
+                finalWorkflowData = {
+                    nodes: generated.nodes,
+                    edges: generated.edges
+                };
+            } catch (aiError) {
+                console.error('Error generating workflow with AI:', aiError);
+                // Fallback to empty workflow if AI fails, but keep the name if provided
+                finalName = name || 'Untitled Workflow';
+                finalWorkflowData = workflow_data || { nodes: [], edges: [] };
+            }
+        }
 
         // Validate trigger_stage_id is a valid UUID or set to null
         const validStageId = isValidUUID(trigger_stage_id) ? trigger_stage_id : null;
@@ -37,9 +60,9 @@ export async function POST(req: Request) {
         const { data, error } = await supabase
             .from('workflows')
             .insert({
-                name,
+                name: finalName,
                 trigger_stage_id: validStageId,
-                workflow_data,
+                workflow_data: finalWorkflowData,
                 is_published: false,
             })
             .select()
