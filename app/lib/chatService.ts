@@ -276,7 +276,7 @@ STYLE: Use Taglish, keep messages short, use 1-2 emojis max.
         systemPrompt += `REFERENCE DATA:
 ${context}
 
-IMPORTANT: When asked about price/magkano/cost, use the EXACT price above (P999 One Time Payment).
+IMPORTANT: When asked about price/magkano/cost, use the EXACT price above.
 Do NOT make up prices or add details not in the reference data.
 
 `;
