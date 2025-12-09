@@ -133,7 +133,6 @@ ALTER TABLE knowledge_categories ENABLE ROW LEVEL SECURITY;
 -- Policy
 CREATE POLICY "Allow all operations on knowledge_categories" ON knowledge_categories
   FOR ALL USING (true) WITH CHECK (true);
-
 -- Insert default categories
 INSERT INTO knowledge_categories (name, type, color) VALUES
   ('General', 'general', 'gray'),
@@ -141,11 +140,9 @@ INSERT INTO knowledge_categories (name, type, color) VALUES
   ('FAQs', 'qa', 'blue'),
   ('Product Info', 'general', 'purple')
 ON CONFLICT DO NOTHING;
-
 -- ============================================================================
 -- PART 4: BOT SETTINGS TABLE
 -- ============================================================================
-
 CREATE TABLE IF NOT EXISTS bot_settings (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   bot_name TEXT DEFAULT 'Assistant',
