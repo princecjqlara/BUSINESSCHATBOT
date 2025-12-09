@@ -211,7 +211,6 @@ async function getProperties(): Promise<Property[]> {
     }
 }
 
-}
 
 // Send products as Facebook Generic Template cards
 async function sendProductCards(sender_psid: string, products: Product[], pageId?: string) {
@@ -594,7 +593,7 @@ export async function POST(req: Request) {
                         // Send automated response
                         await callSendAPI(sender_psid, {
                             text: `Thanks for your interest in ${prop?.title || 'this property'}! An agent will be with you shortly to assist you.`
-                        }, pageId ? pageId.toString() : undefined);
+                        }, recipient_psid);
 
                         // We could also notify the agent here via pipeline/lead update
                         continue;
