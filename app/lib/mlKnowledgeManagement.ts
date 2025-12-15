@@ -89,7 +89,7 @@ Only suggest high-confidence changes (confidenceScore > 0.7).`;
 
         // Use best available model for ML analysis
         const bestModel = await getBestMLModel();
-        
+
         const response = await client.chat.completions.create({
             model: bestModel,
             messages: [{ role: 'user', content: analysisPrompt }],
@@ -101,11 +101,39 @@ Only suggest high-confidence changes (confidenceScore > 0.7).`;
         const content = response.choices[0]?.message?.content;
         if (!content) return [];
 
-        const parsed = JSON.parse(content);
-        const suggestions = parsed.suggestions || parsed.changes || [];
+        // Try to extract JSON from response - AI might return prose with embedded JSON
+        let jsonContent = content.trim();
 
-        // Filter by confidence
-        return suggestions.filter((s: KnowledgeChange) => s.confidenceScore > 0.7);
+        // Remove markdown code blocks if present
+        jsonContent = jsonContent
+            .replace(/```json\n?/gi, '')
+            .replace(/```\n?/gi, '')
+            .trim();
+
+        // Try to find JSON array or object in response
+        const arrayMatch = jsonContent.match(/\[[\s\S]*\]/);
+        const objectMatch = jsonContent.match(/\{[\s\S]*\}/);
+
+        if (arrayMatch) {
+            jsonContent = arrayMatch[0];
+        } else if (objectMatch) {
+            jsonContent = objectMatch[0];
+        } else {
+            // No valid JSON found
+            console.log('[ML Knowledge] Response was not JSON, skipping:', jsonContent.substring(0, 50));
+            return [];
+        }
+
+        try {
+            const parsed = JSON.parse(jsonContent);
+            const suggestions = Array.isArray(parsed) ? parsed : (parsed.suggestions || parsed.changes || []);
+
+            // Filter by confidence
+            return suggestions.filter((s: KnowledgeChange) => s.confidenceScore > 0.7);
+        } catch (parseError) {
+            console.error('[ML Knowledge] JSON parse error:', parseError);
+            return [];
+        }
     } catch (error) {
         console.error('[ML Knowledge] Error analyzing knowledge gaps:', error);
         return [];
@@ -119,7 +147,7 @@ export async function applyKnowledgeChange(change: KnowledgeChange, autoApprove:
     try {
         // Get best model for tracking
         const bestModel = await getBestMLModel();
-        
+
         // Store change in audit log
         const { data: changeRecord, error: logError } = await supabase
             .from('ml_knowledge_changes')
@@ -203,7 +231,7 @@ async function applyDocumentChange(change: KnowledgeChange): Promise<boolean> {
                 })
                 .select()
                 .single();
-            
+
             // Update change record with entity ID
             if (inserted && change.entityId === undefined) {
                 await supabase
@@ -220,7 +248,7 @@ async function applyDocumentChange(change: KnowledgeChange): Promise<boolean> {
                     .update({ old_value: oldValueSnapshot })
                     .eq('id', change.entityId);
             }
-            
+
             const { error } = await supabase
                 .from('documents')
                 .update({
@@ -281,7 +309,7 @@ async function applyRuleChange(change: KnowledgeChange): Promise<boolean> {
                 })
                 .select()
                 .single();
-            
+
             // Update change record with entity ID
             if (inserted && change.entityId === undefined) {
                 await supabase
@@ -298,7 +326,7 @@ async function applyRuleChange(change: KnowledgeChange): Promise<boolean> {
                     .update({ old_value: oldValueSnapshot })
                     .eq('id', change.entityId);
             }
-            
+
             const { error } = await supabase
                 .from('bot_rules')
                 .update({
@@ -339,7 +367,7 @@ async function applyInstructionChange(change: KnowledgeChange): Promise<boolean>
         let newInstructions = '';
         if (change.changeType === 'add' || change.changeType === 'update') {
             const currentText = current?.bot_instructions || '';
-            newInstructions = change.changeType === 'add' 
+            newInstructions = change.changeType === 'add'
                 ? `${currentText}\n\n${change.newValue}`
                 : change.newValue;
         } else if (change.changeType === 'delete' && change.oldValue) {
@@ -365,7 +393,7 @@ async function applyInstructionChange(change: KnowledgeChange): Promise<boolean>
 async function applyPersonalityChange(change: KnowledgeChange): Promise<boolean> {
     try {
         const updates: Record<string, any> = {};
-        
+
         if (change.newValue?.botTone) {
             updates.bot_tone = change.newValue.botTone;
         }
@@ -398,7 +426,7 @@ export async function processKnowledgeImprovements(
     try {
         // Analyze for knowledge gaps
         const suggestions = await analyzeKnowledgeGaps(conversationHistory, failedQueries);
-        
+
         // Apply high-confidence changes automatically
         for (const suggestion of suggestions) {
             if (suggestion.confidenceScore > 0.8) {

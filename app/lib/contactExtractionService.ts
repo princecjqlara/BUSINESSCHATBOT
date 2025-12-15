@@ -129,8 +129,8 @@ export async function extractBusinessDetails(
         // Build conversation context if available
         const conversationContext = conversationHistory
             ? conversationHistory
-                  .map(msg => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
-                  .join('\n\n')
+                .map(msg => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
+                .join('\n\n')
             : '';
 
         const fullContext = conversationContext
@@ -213,7 +213,7 @@ If a field is not found, use null. Do not make up information. Only extract what
         });
 
         const responseText = completion.choices[0]?.message?.content || '';
-        
+
         // Parse JSON response
         try {
             // Remove markdown code blocks if present
@@ -222,8 +222,28 @@ If a field is not found, use null. Do not make up information. Only extract what
                 .replace(/```\n?/gi, '')
                 .trim();
 
+            // Try to extract JSON from response if it starts with prose
+            // AI sometimes says "Here is the JSON:" before the actual JSON
+            const jsonMatch = cleanedResponse.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+                cleanedResponse = jsonMatch[0];
+            }
+
+            // If still no valid JSON, return empty response
+            if (!cleanedResponse.startsWith('{')) {
+                console.log('[AI Extraction] Response was not JSON, skipping:', cleanedResponse.substring(0, 50));
+                return {
+                    businessName: null,
+                    decisionMakerName: null,
+                    decisionMakerPosition: null,
+                    pageName: null,
+                    pageLink: null,
+                    additionalContactInfo: null,
+                };
+            }
+
             const extracted = JSON.parse(cleanedResponse);
-            
+
             return {
                 businessName: extracted.businessName || null,
                 decisionMakerName: extracted.decisionMakerName || null,
@@ -373,14 +393,14 @@ export async function extractAndStoreContactInfo(
     // Run AI extraction if message seems substantial (more than just a greeting/short response)
     // Also check for business-related keywords that indicate business information might be present
     const businessKeywords = [
-        'business', 'company', 'store', 'shop', 'restaurant', 'owner', 'manager', 
+        'business', 'company', 'store', 'shop', 'restaurant', 'owner', 'manager',
         'address', 'location', 'website', 'industry', 'corp', 'inc', 'llc',
         'establishment', 'enterprise', 'firm', 'organization', 'office'
     ];
-    const hasBusinessKeywords = businessKeywords.some(keyword => 
+    const hasBusinessKeywords = businessKeywords.some(keyword =>
         messageText.toLowerCase().includes(keyword.toLowerCase())
     );
-    
+
     const shouldExtractBusinessDetails = (
         messageText.length > 15 || // Longer messages likely have more info
         hasBusinessKeywords || // Business-related keywords
@@ -388,7 +408,7 @@ export async function extractAndStoreContactInfo(
     ) && !messageText.toLowerCase().match(/^(hi|hello|hey|thanks|thank you|ok|okay|yes|no|okay|sure)$/i);
 
     let businessDetails: ExtractedBusinessDetails | undefined;
-    
+
     if (shouldExtractBusinessDetails) {
         try {
             businessDetails = await extractBusinessDetails(messageText, conversationHistory);
