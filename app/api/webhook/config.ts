@@ -44,11 +44,14 @@ export async function getSettings() {
 
 // Get page access token - first tries connected_pages table, then falls back to bot_settings
 export async function getPageToken(pageId?: string): Promise<string | null> {
+    console.log('[getPageToken] Looking for token, pageId:', pageId);
+
     // If we have a page ID, try to get page-specific token first
     if (pageId) {
         const now = Date.now();
         const cached = pageTokenCache.get(pageId);
         if (cached && now - cached.fetchedAt < PAGE_TOKEN_CACHE_MS) {
+            console.log('[getPageToken] Using cached token for page:', pageId);
             return cached.token;
         }
 
@@ -61,15 +64,26 @@ export async function getPageToken(pageId?: string): Promise<string | null> {
                 .single();
 
             if (!error && data?.page_access_token) {
+                console.log('[getPageToken] Found token in connected_pages for:', pageId);
                 pageTokenCache.set(pageId, { token: data.page_access_token, fetchedAt: now });
                 return data.page_access_token;
             }
+            console.log('[getPageToken] No token in connected_pages, error:', error?.message);
         } catch (error) {
-            console.error('Error fetching page token:', error);
+            console.error('[getPageToken] Error fetching page token:', error);
         }
     }
 
     // Fallback to bot_settings or environment variable
     const settings = await getSettings();
-    return settings.facebook_page_access_token || process.env.FACEBOOK_PAGE_ACCESS_TOKEN || null;
+    const dbToken = settings?.facebook_page_access_token;
+    const envToken = process.env.FACEBOOK_PAGE_ACCESS_TOKEN;
+
+    console.log('[getPageToken] Fallback - DB token exists:', !!dbToken, ', ENV token exists:', !!envToken);
+
+    const token = dbToken || envToken || null;
+    if (!token) {
+        console.error('[getPageToken] ⚠️ NO TOKEN FOUND! Messages will not be sent.');
+    }
+    return token;
 }
