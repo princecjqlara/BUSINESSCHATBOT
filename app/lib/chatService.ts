@@ -95,6 +95,78 @@ async function getBotInstructions(): Promise<string> {
     }
 }
 
+// Lead context for AI awareness of contact details and conversation history
+interface LeadContext {
+    leadName: string | null;
+    phone: string | null;
+    email: string | null;
+    businessName: string | null;
+    pipelineStageName: string | null;
+    pipelineStageDescription: string | null;
+    lastBotMessages: string[];
+    messageCount: number;
+}
+
+// Fetch lead context for autonomous AI follow-up
+async function getLeadContext(senderId: string): Promise<LeadContext | null> {
+    try {
+        // Fetch lead with pipeline stage info
+        const { data: lead, error: leadError } = await supabase
+            .from('leads')
+            .select(`
+                id,
+                name,
+                phone,
+                email,
+                business_name,
+                message_count,
+                current_stage_id,
+                pipeline_stages (
+                    name,
+                    description
+                )
+            `)
+            .eq('sender_id', senderId)
+            .single();
+
+        if (leadError || !lead) {
+            console.log('[Lead Context] No lead found for sender:', senderId);
+            return null;
+        }
+
+        // Fetch last 5 bot messages to avoid repetition
+        const { data: botMessages } = await supabase
+            .from('conversations')
+            .select('content')
+            .eq('sender_id', senderId)
+            .eq('role', 'assistant')
+            .order('created_at', { ascending: false })
+            .limit(5);
+
+        const lastBotMessages = botMessages?.map((m: { content: string }) => m.content) || [];
+
+        // Extract pipeline stage info
+        const pipelineStage = (lead as unknown as { pipeline_stages?: { name: string; description?: string } }).pipeline_stages;
+
+        const context: LeadContext = {
+            leadName: lead.name,
+            phone: lead.phone,
+            email: lead.email,
+            businessName: (lead as { business_name?: string }).business_name || null,
+            pipelineStageName: pipelineStage?.name || null,
+            pipelineStageDescription: pipelineStage?.description || null,
+            lastBotMessages,
+            messageCount: lead.message_count || 0,
+        };
+
+        console.log(`[Lead Context] Loaded for ${senderId}: Stage="${context.pipelineStageName}", Messages=${context.messageCount}`);
+        return context;
+    } catch (error) {
+        console.error('[Lead Context] Error fetching:', error);
+        return null;
+    }
+}
+
 // Payment-related keywords to detect
 const PAYMENT_KEYWORDS = [
     'payment', 'bayad', 'magbayad', 'pay', 'gcash', 'maya', 'paymaya',
@@ -292,12 +364,13 @@ export async function getBotResponse(
     }
 
     // Run independent operations in PARALLEL
-    const [rules, history, contextResult, instructions, botGoals] = await Promise.all([
+    const [rules, history, contextResult, instructions, botGoals, leadContext] = await Promise.all([
         getBotRules(),
         getConversationHistory(senderId),
         searchDocuments(userMessage, 5, previewDocumentContent), // Pass preview content
         getBotInstructions(),
         getActiveBotGoals(),
+        getLeadContext(senderId), // Get lead info for AI context
     ]);
 
     const context = contextResult.content;
@@ -451,21 +524,51 @@ GOOD EXAMPLES (DO THIS INSTEAD):
 
     // Add AI Autonomous Follow-up / Self-Thinking prompt when enabled
     if (enableAiAutonomousFollowup) {
+        // Build lead context section if available
+        let leadContextSection = '';
+        if (leadContext) {
+            leadContextSection = `
+📋 CURRENT CONTACT INFORMATION:
+${leadContext.leadName ? `- Name: ${leadContext.leadName}` : '- Name: Unknown'}
+${leadContext.phone ? `- Phone: ${leadContext.phone}` : ''}
+${leadContext.email ? `- Email: ${leadContext.email}` : ''}
+${leadContext.businessName ? `- Business: ${leadContext.businessName}` : ''}
+${leadContext.pipelineStageName ? `- Pipeline Stage: ${leadContext.pipelineStageName}` : '- Pipeline Stage: New Lead'}
+${leadContext.pipelineStageDescription ? `- Stage Description: ${leadContext.pipelineStageDescription}` : ''}
+- Total Messages Exchanged: ${leadContext.messageCount}
+
+⛔ YOUR RECENT MESSAGES (DO NOT REPEAT THESE):
+${leadContext.lastBotMessages.length > 0
+                    ? leadContext.lastBotMessages.map((msg, i) => `${i + 1}. "${msg.substring(0, 100)}${msg.length > 100 ? '...' : ''}"`).join('\n')
+                    : '(No previous messages)'}
+
+🚫 MESSAGE REPETITION RULE (CRITICAL):
+- NEVER repeat the exact same message or similar phrasing as your recent messages listed above
+- Each response must be UNIQUE and move the conversation forward
+- Only repeat information if the customer EXPLICITLY asks you to repeat or clarify
+- If asked "can you repeat that?" or "what did you say?" - then you may repeat
+- Otherwise, always provide fresh, contextual responses
+
+`;
+        }
+
         systemPrompt += `AI AUTONOMOUS FOLLOW-UP & SELF-THINKING (ENABLED):
 
 You have the ability to think autonomously about this conversation and proactively guide it. Use your own judgment and experience to:
-
+${leadContextSection}
 🧠 SELF-REFLECTION:
 - Analyze the current state of this conversation
 - Consider what the customer might need next, even if they haven't asked
 - Think about potential concerns or questions they might have
 - Reflect on the best approach to move the conversation forward productively
+- Consider the customer's pipeline stage and tailor your approach accordingly
 
 🎯 PROACTIVE ACTIONS:
 - If you notice the customer might benefit from additional information, offer it naturally
 - If the conversation seems to be stalling, suggest next steps or ask clarifying questions
 - If there's an opportunity to add value, take it without being pushy
 - If you sense hesitation, address potential concerns proactively
+- For leads in early stages, focus on qualification; for later stages, focus on closing
 
 📊 EXPERIENCE-BASED DECISIONS:
 - Draw on patterns you've learned from conversations
