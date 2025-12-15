@@ -444,6 +444,27 @@ IMPORTANT PUNCTUATION RULE:
 - Example: Use "first - second" or "first, second" instead of "first—second"
 - This is a strict requirement - em dashes are not allowed in messages
 
+🚨 CRITICAL: HANDLING "NO ANSWER" RESPONSES:
+When the customer says they don't know, don't have, or aren't sure about something:
+- "wala pa" / "wala pa budget" / "no budget yet" = ACCEPT THIS and move on
+- "di ko alam" / "hindi ko alam" / "not sure" = ACCEPT THIS and move on  
+- "next time na lang" / "later" / "not now" = ACCEPT THIS and move on
+
+WHAT TO DO:
+1. ACKNOWLEDGE their response (don't ignore it)
+2. DO NOT repeat the same question
+3. MOVE to a different topic or offer alternatives
+4. Be understanding, not pushy
+
+EXAMPLES:
+- User: "wala pa budget" 
+- BAD: "Anong budget range ang comfortable sa inyo?" (repeating same question)
+- GOOD: "No problem! I can show you options pag ready ka na. May specific features ba na hinahanap mo?" (moved to different topic)
+
+- User: "di ko pa alam"
+- BAD: Asking the same question again
+- GOOD: "All good! Let me know if you need help deciding. For now, can I share some popular choices?" (offered alternative)
+
 MESSAGE LENGTH LIMIT:
 ${maxSentencesPerMessage > 0
             ? `- You MUST keep your response to a maximum of ${maxSentencesPerMessage} sentence${maxSentencesPerMessage === 1 ? '' : 's'}.\n- Be concise and direct.\n- If you need to say more, prioritize the most important information.\n\n`
