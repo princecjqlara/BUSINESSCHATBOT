@@ -2,11 +2,11 @@
     "crons": [
         {
             "path": "/api/cron/execute-workflows",
-            "schedule": "* * * * *"
+            "schedule": "0 0 * * *"
         },
         {
             "path": "/api/cron/process-scheduled-messages",
-            "schedule": "* * * * *"
+            "schedule": "0 0 * * *"
         }
     ]
 }
