@@ -37,7 +37,6 @@ export default function RulesEditor() {
     const [enableMlChatbot, setEnableMlChatbot] = useState(false);
     const [enableAiKnowledgeManagement, setEnableAiKnowledgeManagement] = useState(false);
     const [enableAiAutonomousFollowup, setEnableAiAutonomousFollowup] = useState(false);
-    const [enableResponseValidation, setEnableResponseValidation] = useState(false);
     const [maxSentencesPerMessage, setMaxSentencesPerMessage] = useState(3);
     const [aiDecidesMessageSplit, setAiDecidesMessageSplit] = useState(false);
     const [conversationFlow, setConversationFlow] = useState('');
@@ -81,9 +80,6 @@ export default function RulesEditor() {
             }
             if (data.enableAiAutonomousFollowup !== undefined) {
                 setEnableAiAutonomousFollowup(data.enableAiAutonomousFollowup);
-            }
-            if (data.enableResponseValidation !== undefined) {
-                setEnableResponseValidation(data.enableResponseValidation);
             }
             if (data.maxSentencesPerMessage !== undefined && data.maxSentencesPerMessage !== null) {
                 const val = Number(data.maxSentencesPerMessage);
@@ -144,7 +140,6 @@ export default function RulesEditor() {
                 enableMlChatbot,
                 enableAiKnowledgeManagement,
                 enableAiAutonomousFollowup,
-                enableResponseValidation,
                 maxSentencesPerMessage: aiDecidesMessageSplit
                     ? -1  // -1 means AI decides
                     : (maxSentencesPerMessage !== null && maxSentencesPerMessage !== undefined
@@ -890,31 +885,6 @@ export default function RulesEditor() {
                                     {enableAiAutonomousFollowup ? <ToggleRight size={28} /> : <ToggleLeft size={28} />}
                                 </button>
                             </div>
-
-                            {/* Multi-Model Response Validation Toggle */}
-                            {enableMlChatbot && (
-                                <div className="flex items-center justify-between bg-gradient-to-r from-rose-50 to-pink-50 p-4 rounded-2xl border border-rose-100">
-                                    <div className="flex-1">
-                                        <div className="font-medium text-gray-900 mb-1 flex items-center gap-2">
-                                            <Sparkles size={16} className="text-rose-600" />
-                                            Multi-Model Response Validation
-                                        </div>
-                                        <p className="text-sm text-gray-500">
-                                            Use a secondary AI model (GPT OSS 120B) to validate bot responses for rule compliance and prevent hallucinations before sending.
-                                        </p>
-                                    </div>
-                                    <button
-                                        onClick={() => setEnableResponseValidation(!enableResponseValidation)}
-                                        className={`ml-4 p-2 rounded-lg transition-colors ${enableResponseValidation
-                                            ? 'text-rose-600 bg-rose-100 hover:bg-rose-200'
-                                            : 'text-gray-400 bg-white hover:bg-gray-50'
-                                            }`}
-                                        title={enableResponseValidation ? 'Disable response validation' : 'Enable response validation'}
-                                    >
-                                        {enableResponseValidation ? <ToggleRight size={28} /> : <ToggleLeft size={28} />}
-                                    </button>
-                                </div>
-                            )}
                         </div>
                     </div>
 

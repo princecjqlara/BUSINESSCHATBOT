@@ -22,7 +22,6 @@ export async function GET() {
                 enableMlChatbot: false,
                 enableAiKnowledgeManagement: false,
                 enableAiAutonomousFollowup: false,
-                enableResponseValidation: false,
                 maxSentencesPerMessage: 3,
                 conversationFlow: '',
             });
@@ -48,7 +47,6 @@ export async function GET() {
             enableMlChatbot: data.enable_ml_chatbot ?? false,
             enableAiKnowledgeManagement: data.enable_ai_knowledge_management ?? false,
             enableAiAutonomousFollowup: data.enable_ai_autonomous_followup ?? false,
-            enableResponseValidation: data.enable_response_validation ?? false,
             maxSentencesPerMessage: maxSentences,
             conversationFlow: data.conversation_flow || '',
         });
@@ -80,7 +78,6 @@ export async function POST(req: Request) {
             enableMlChatbot: body.enableMlChatbot,
             enableAiKnowledgeManagement: body.enableAiKnowledgeManagement,
             enableAiAutonomousFollowup: body.enableAiAutonomousFollowup,
-            enableResponseValidation: body.enableResponseValidation,
             maxSentencesPerMessage: body.maxSentencesPerMessage,
             conversationFlow: body.conversationFlow
         });
@@ -112,7 +109,6 @@ export async function POST(req: Request) {
         if (body.enableMlChatbot !== undefined && body.enableMlChatbot !== null) updates.enable_ml_chatbot = Boolean(body.enableMlChatbot);
         if (body.enableAiKnowledgeManagement !== undefined && body.enableAiKnowledgeManagement !== null) updates.enable_ai_knowledge_management = Boolean(body.enableAiKnowledgeManagement);
         if (body.enableAiAutonomousFollowup !== undefined && body.enableAiAutonomousFollowup !== null) updates.enable_ai_autonomous_followup = Boolean(body.enableAiAutonomousFollowup);
-        if (body.enableResponseValidation !== undefined && body.enableResponseValidation !== null) updates.enable_response_validation = Boolean(body.enableResponseValidation);
         if (body.maxSentencesPerMessage !== undefined && body.maxSentencesPerMessage !== null) {
             // Allow values from -1 (AI decides), 0 (no limit), to 20
             const value = parseInt(String(body.maxSentencesPerMessage), 10);
@@ -387,7 +383,6 @@ export async function POST(req: Request) {
                     enableMlChatbot: updatedData.enable_ml_chatbot ?? body.enableMlChatbot ?? false,
                     enableAiKnowledgeManagement: updatedData.enable_ai_knowledge_management ?? body.enableAiKnowledgeManagement ?? false,
                     enableAiAutonomousFollowup: updatedData.enable_ai_autonomous_followup ?? body.enableAiAutonomousFollowup ?? false,
-                    enableResponseValidation: updatedData.enable_response_validation ?? body.enableResponseValidation ?? false,
                     maxSentencesPerMessage: updatedData.max_sentences_per_message !== null && updatedData.max_sentences_per_message !== undefined
                         ? Number(updatedData.max_sentences_per_message)
                         : (body.maxSentencesPerMessage !== undefined && body.maxSentencesPerMessage !== null
@@ -442,7 +437,6 @@ export async function POST(req: Request) {
                 enable_ml_chatbot: body.enableMlChatbot ?? false,
                 enable_ai_knowledge_management: body.enableAiKnowledgeManagement ?? false,
                 enable_ai_autonomous_followup: body.enableAiAutonomousFollowup ?? false,
-                enable_response_validation: body.enableResponseValidation ?? false,
             };
 
             // Only include max_sentences_per_message if it was provided
@@ -486,7 +480,6 @@ export async function POST(req: Request) {
                     enableMlChatbot: insertedData.enable_ml_chatbot ?? body.enableMlChatbot ?? false,
                     enableAiKnowledgeManagement: insertedData.enable_ai_knowledge_management ?? body.enableAiKnowledgeManagement ?? false,
                     enableAiAutonomousFollowup: insertedData.enable_ai_autonomous_followup ?? body.enableAiAutonomousFollowup ?? false,
-                    enableResponseValidation: insertedData.enable_response_validation ?? body.enableResponseValidation ?? false,
                     maxSentencesPerMessage: insertedData.max_sentences_per_message !== null && insertedData.max_sentences_per_message !== undefined
                         ? Number(insertedData.max_sentences_per_message)
                         : (body.maxSentencesPerMessage !== undefined && body.maxSentencesPerMessage !== null

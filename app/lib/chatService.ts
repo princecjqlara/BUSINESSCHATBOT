@@ -855,85 +855,39 @@ INSTRUCTION: Respond naturally about the image. If they might be trying to send 
         const llmStart = Date.now();
         let responseContent = '';
 
-        // Models for generation
+        // Model cascade - try each in order until one works
+        // Ordered by quality (best first) and reliability
         const models = [
             "deepseek-ai/deepseek-v3.1",      // Primary: DeepSeek V3.1 (best for rule following & reasoning)
             "qwen/qwen3-235b-a22b",           // Fallback 1: Qwen3 (best quality)
             "meta/llama-3.1-8b-instruct",     // Fallback 2: Llama 3.1 8B (fast, reliable)
+            "mistralai/mistral-nemo-12b-instruct",  // Fallback 3: Mistral NeMo 12B
         ];
 
-        // Multi-model response selection: generate from multiple models and pick best
-        if (enableResponseValidation) {
-            console.log('[Multi-Model] Generating responses from multiple models in parallel...');
+        let lastError: any = null;
+        for (const model of models) {
+            try {
+                console.log(`[LLM] Trying model: ${model}`);
+                responseContent = await callLLMWithRetry(model, 1);
+                console.log(`[LLM] Successfully got response from ${model}`);
+                break; // Success! Exit the loop
+            } catch (err: any) {
+                console.error(`[LLM] Model ${model} failed:`, err.message);
+                lastError = err;
 
-            // Generate from top 2 models in parallel (balance speed vs quality)
-            const modelsToTry = models.slice(0, 2);
-            const responsePromises = modelsToTry.map(async (model) => {
-                try {
-                    const content = await callLLMWithRetry(model, 1);
-                    console.log(`[Multi-Model] Got response from ${model}`);
-                    return { model, content };
-                } catch (error: any) {
-                    console.log(`[Multi-Model] Model ${model} failed: ${error.message}`);
-                    return { model, content: '' };
+                // Add extra delay for 503 errors (service recovering)
+                if (err.message?.includes('503') || err.message?.includes('Service Unavailable')) {
+                    console.log(`[LLM] 503 detected, waiting 2 seconds before trying next model...`);
+                    await new Promise(resolve => setTimeout(resolve, 2000));
                 }
-            });
+                continue; // Try next model
+            }
+        }
 
-            const responses = await Promise.all(responsePromises);
-            const validResponses = responses.filter(r => r.content && r.content.trim() !== '');
-
-            if (validResponses.length === 0) {
-                // All parallel models failed, try cascade fallback
-                console.log('[Multi-Model] All parallel models failed, trying cascade fallback...');
-                for (const model of models) {
-                    try {
-                        responseContent = await callLLMWithRetry(model, 1);
-                        if (responseContent && responseContent.trim() !== '') break;
-                    } catch { continue; }
-                }
-            } else if (validResponses.length === 1) {
-                // Only one response, use it
-                responseContent = validResponses[0].content;
-                console.log(`[Multi-Model] Using single response from ${validResponses[0].model}`);
-            } else {
-                // Multiple responses - use GPT OSS 120B to pick the best
-                console.log(`[Multi-Model] Picking best from ${validResponses.length} responses...`);
-                try {
-                    const pickResult = await pickBestResponse(validResponses, {
-                        rules,
-                        knowledgeContext: context || '',
-                        conversationHistory: history,
-                        botName,
-                        botTone,
-                    });
-                    responseContent = pickResult.bestResponse;
-                    console.log(`[Multi-Model] Selected response from ${pickResult.bestModel}`);
-                } catch (pickError) {
-                    console.error('[Multi-Model] Error picking best response:', pickError);
-                    responseContent = validResponses[0].content;
-                }
-            }
-        } else {
-            // Original cascade approach when validation is disabled
-            let lastError: any = null;
-            for (const model of models) {
-                try {
-                    console.log(`[LLM] Trying model: ${model}`);
-                    responseContent = await callLLMWithRetry(model, 1);
-                    console.log(`[LLM] Successfully got response from ${model}`);
-                    break;
-                } catch (err: any) {
-                    console.error(`[LLM] Model ${model} failed:`, err.message);
-                    lastError = err;
-                    if (err.message?.includes('503') || err.message?.includes('Service Unavailable')) {
-                        await new Promise(resolve => setTimeout(resolve, 2000));
-                    }
-                    continue;
-                }
-            }
-            if (!responseContent || responseContent.trim() === '') {
-                throw lastError || new Error('All models failed to respond');
-            }
+        // If all models failed
+        if (!responseContent || responseContent.trim() === '') {
+            console.error('[LLM] All models failed!');
+            throw lastError || new Error('All models failed to respond');
         }
 
         console.log(`[LLM] Total LLM call took ${Date.now() - llmStart}ms`)
@@ -946,10 +900,10 @@ INSTRUCTION: Respond naturally about the image. If they might be trying to send 
             return fallback;
         }
 
-        // Additional validation pass (if enabled) - for rule compliance check
+        // Multi-model response validation (if enabled)
         let validatedContent = responseContent;
         if (enableResponseValidation) {
-            console.log('[Response Validation] Running final validation check...');
+            console.log('[Response Validation] Enabled, validating response...');
             try {
                 const validationResult = await validateResponse(validatedContent, {
                     rules,
@@ -957,6 +911,7 @@ INSTRUCTION: Respond naturally about the image. If they might be trying to send 
                     conversationHistory: history,
                     botName,
                     botTone,
+                    conversationFlow,
                 });
 
                 // Log validation result for analytics (fire and forget)
