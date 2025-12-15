@@ -42,6 +42,10 @@ function SettingsContent() {
     const [loadingPages, setLoadingPages] = useState(true);
     const [syncingPageId, setSyncingPageId] = useState<string | null>(null);
 
+    // Pagination state for Facebook Pages
+    const [currentPage, setCurrentPage] = useState(1);
+    const pagesPerPage = 5;
+
     // Facebook OAuth state
     const [showPageSelector, setShowPageSelector] = useState(false);
     const [availablePages, setAvailablePages] = useState<FacebookPageData[]>([]);
@@ -440,86 +444,136 @@ function SettingsContent() {
                                 </p>
                             </div>
                         ) : (
-                            <div className="grid gap-4">
-                                {connectedPages.map((page) => (
-                                    <div
-                                        key={page.id}
-                                        className="group flex flex-col sm:flex-row items-start sm:items-center gap-6 p-6 bg-white border border-gray-100 rounded-[24px] hover:shadow-lg transition-all duration-300 hover:border-gray-200"
-                                    >
-                                        {/* Page Picture */}
-                                        <div className="relative">
-                                            {page.profile_pic ? (
-                                                <img
-                                                    src={page.profile_pic}
-                                                    alt={page.page_name}
-                                                    className="w-16 h-16 rounded-2xl object-cover shadow-sm bg-gray-50"
-                                                />
-                                            ) : (
-                                                <div className="w-16 h-16 rounded-2xl bg-gray-50 flex items-center justify-center">
-                                                    <span className="text-xl font-bold text-gray-400">
-                                                        {page.page_name.charAt(0).toUpperCase()}
-                                                    </span>
-                                                </div>
-                                            )}
-                                            {page.is_active && (
-                                                <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-green-500 border-4 border-white rounded-full"></div>
-                                            )}
-                                        </div>
-
-                                        {/* Page Info */}
-                                        <div className="flex-1 min-w-0">
-                                            <div className="flex items-center gap-3 mb-2">
-                                                <h3 className="font-semibold text-gray-900 text-xl truncate tracking-tight">
-                                                    {page.page_name}
-                                                </h3>
-                                                <span className="px-2 py-1 bg-gray-100 text-gray-500 text-xs rounded-md font-mono">
-                                                    {page.page_id}
-                                                </span>
-                                            </div>
-                                            <div className="flex flex-wrap items-center gap-3">
-                                                {page.webhook_subscribed ? (
-                                                    <span className="inline-flex items-center gap-1.5 text-sm text-green-700 font-medium">
-                                                        <CheckCircle size={16} className="text-green-600" />
-                                                        Active & Synced
-                                                    </span>
-                                                ) : (
-                                                    <span className="inline-flex items-center gap-1.5 text-sm text-amber-700 font-medium">
-                                                        <AlertCircle size={16} className="text-amber-600" />
-                                                        Setup Incomplete
-                                                    </span>
-                                                )}
-                                            </div>
-                                        </div>
-
-                                        {/* Actions */}
-                                        <div className="flex items-center gap-2 w-full sm:w-auto mt-2 sm:mt-0">
+                            <div className="space-y-4">
+                                {/* Pagination Info */}
+                                {connectedPages.length > pagesPerPage && (
+                                    <div className="flex items-center justify-between text-sm text-gray-500">
+                                        <span>
+                                            Showing {((currentPage - 1) * pagesPerPage) + 1}-{Math.min(currentPage * pagesPerPage, connectedPages.length)} of {connectedPages.length} pages
+                                        </span>
+                                        <div className="flex items-center gap-2">
                                             <button
-                                                onClick={() => handleSyncPage(page.page_id, page.page_name)}
-                                                disabled={syncingPageId === page.page_id}
-                                                className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-3 text-gray-500 hover:text-teal-600 hover:bg-teal-50 rounded-full transition-all text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                                                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                                disabled={currentPage === 1}
+                                                className="px-3 py-1 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                             >
-                                                {syncingPageId === page.page_id ? (
-                                                    <>
-                                                        <Loader2 size={18} className="animate-spin" />
-                                                        <span className="sm:hidden">Syncing...</span>
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <RefreshCw size={18} />
-                                                        <span className="sm:hidden">Sync</span>
-                                                    </>
-                                                )}
+                                                Previous
                                             </button>
+                                            <span className="px-3 py-1 bg-gray-100 rounded-lg font-medium">
+                                                {currentPage} / {Math.ceil(connectedPages.length / pagesPerPage)}
+                                            </span>
                                             <button
-                                                onClick={() => handleDisconnectPage(page.page_id, page.page_name)}
-                                                className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-3 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-full transition-all text-sm font-medium"
+                                                onClick={() => setCurrentPage(p => Math.min(Math.ceil(connectedPages.length / pagesPerPage), p + 1))}
+                                                disabled={currentPage >= Math.ceil(connectedPages.length / pagesPerPage)}
+                                                className="px-3 py-1 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                             >
-                                                <Trash2 size={18} />
-                                                <span className="sm:hidden">Disconnect</span>
+                                                Next
                                             </button>
                                         </div>
                                     </div>
-                                ))}
+                                )}
+
+                                <div className="grid gap-4">
+                                    {connectedPages
+                                        .slice((currentPage - 1) * pagesPerPage, currentPage * pagesPerPage)
+                                        .map((page) => (
+                                            <div
+                                                key={page.id}
+                                                className="group flex flex-col sm:flex-row items-start sm:items-center gap-6 p-6 bg-white border border-gray-100 rounded-[24px] hover:shadow-lg transition-all duration-300 hover:border-gray-200"
+                                            >
+                                                {/* Page Picture */}
+                                                <div className="relative">
+                                                    {page.profile_pic ? (
+                                                        <img
+                                                            src={page.profile_pic}
+                                                            alt={page.page_name}
+                                                            className="w-16 h-16 rounded-2xl object-cover shadow-sm bg-gray-50"
+                                                        />
+                                                    ) : (
+                                                        <div className="w-16 h-16 rounded-2xl bg-gray-50 flex items-center justify-center">
+                                                            <span className="text-xl font-bold text-gray-400">
+                                                                {page.page_name.charAt(0).toUpperCase()}
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                    {page.is_active && (
+                                                        <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-green-500 border-4 border-white rounded-full"></div>
+                                                    )}
+                                                </div>
+
+                                                {/* Page Info */}
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-3 mb-2">
+                                                        <h3 className="font-semibold text-gray-900 text-xl truncate tracking-tight">
+                                                            {page.page_name}
+                                                        </h3>
+                                                        <span className="px-2 py-1 bg-gray-100 text-gray-500 text-xs rounded-md font-mono">
+                                                            {page.page_id}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex flex-wrap items-center gap-3">
+                                                        {page.webhook_subscribed ? (
+                                                            <span className="inline-flex items-center gap-1.5 text-sm text-green-700 font-medium">
+                                                                <CheckCircle size={16} className="text-green-600" />
+                                                                Active & Synced
+                                                            </span>
+                                                        ) : (
+                                                            <span className="inline-flex items-center gap-1.5 text-sm text-amber-700 font-medium">
+                                                                <AlertCircle size={16} className="text-amber-600" />
+                                                                Setup Incomplete
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                {/* Actions */}
+                                                <div className="flex items-center gap-2 w-full sm:w-auto mt-2 sm:mt-0">
+                                                    <button
+                                                        onClick={() => handleSyncPage(page.page_id, page.page_name)}
+                                                        disabled={syncingPageId === page.page_id}
+                                                        className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-3 text-gray-500 hover:text-teal-600 hover:bg-teal-50 rounded-full transition-all text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                                                    >
+                                                        {syncingPageId === page.page_id ? (
+                                                            <>
+                                                                <Loader2 size={18} className="animate-spin" />
+                                                                <span className="sm:hidden">Syncing...</span>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <RefreshCw size={18} />
+                                                                <span className="sm:hidden">Sync</span>
+                                                            </>
+                                                        )}
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDisconnectPage(page.page_id, page.page_name)}
+                                                        className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-3 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-full transition-all text-sm font-medium"
+                                                    >
+                                                        <Trash2 size={18} />
+                                                        <span className="sm:hidden">Disconnect</span>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                </div>
+
+                                {/* Bottom Pagination */}
+                                {connectedPages.length > pagesPerPage && (
+                                    <div className="flex justify-center gap-2 pt-4">
+                                        {Array.from({ length: Math.ceil(connectedPages.length / pagesPerPage) }, (_, i) => (
+                                            <button
+                                                key={i + 1}
+                                                onClick={() => setCurrentPage(i + 1)}
+                                                className={`w-8 h-8 rounded-full text-sm font-medium transition-colors ${currentPage === i + 1
+                                                        ? 'bg-teal-600 text-white'
+                                                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                                    }`}
+                                            >
+                                                {i + 1}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>
@@ -571,8 +625,8 @@ function SettingsContent() {
                                     <div
                                         key={goal.id}
                                         className={`group flex items-start gap-4 p-6 bg-white border rounded-[24px] transition-all duration-300 ${goal.is_active
-                                                ? 'border-gray-100 hover:shadow-lg hover:border-gray-200'
-                                                : 'border-gray-50 opacity-60'
+                                            ? 'border-gray-100 hover:shadow-lg hover:border-gray-200'
+                                            : 'border-gray-50 opacity-60'
                                             }`}
                                     >
                                         {/* Drag Handle */}
