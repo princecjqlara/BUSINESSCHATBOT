@@ -571,6 +571,10 @@ IMPORTANT: Follow the conversation flow structure above. Use it to guide how you
 
     // Add bot goals to guide conversation towards specific outcomes
     if (botGoals.length > 0) {
+        const completedGoals = botGoals.filter(goal => completedGoalIds.includes(goal.id));
+        const stopGoals = botGoals.filter(goal => goal.stop_on_completion);
+        const completedStopGoals = stopGoals.filter(goal => completedGoalIds.includes(goal.id));
+
         const goalsText = botGoals.map((goal, i) => {
             const priorityLabel = goal.priority_order ? `[Priority ${goal.priority_order}]` : '[Low Priority]';
             const optionalLabel = goal.is_optional ? ' (Optional)' : ' (Required)';
@@ -578,9 +582,21 @@ IMPORTANT: Follow the conversation flow structure above. Use it to guide how you
    ${goal.goal_description || 'No description provided'}`;
         }).join('\n\n');
 
-        systemPrompt += `═══════════════════════════════════════════════════════════
-🎯 CONVERSATION GOALS - WORK TOWARDS THESE OUTCOMES
-═══════════════════════════════════════════════════════════
+        const completedGoalsText = completedGoals.length > 0
+            ? completedGoals.map(goal => `- ${goal.goal_name}${goal.stop_on_completion ? ' (Stop goal)' : ''}`).join('\n')
+            : '- None yet';
+
+        const stopGoalsText = stopGoals.length > 0
+            ? stopGoals.map(goal => `- ${goal.goal_name}`).join('\n')
+            : '- None defined';
+
+        const completedStopGoalsText = completedStopGoals.length > 0
+            ? completedStopGoals.map(goal => `- ${goal.goal_name}`).join('\n')
+            : '- None yet';
+
+        systemPrompt += `============================================================
+CONVERSATION GOALS - WORK TOWARDS THESE OUTCOMES
+============================================================
 
 Your conversation should naturally work towards achieving these goals:
 
@@ -593,8 +609,16 @@ IMPORTANT GOAL GUIDANCE:
 - Higher priority goals should be addressed first when possible
 - Track when goals are achieved during the conversation
 - Once a goal is achieved, focus on the next priority goal
+- Completed goals so far:
+${completedGoalsText}
+- Goals marked "stop when reached":
+${stopGoalsText}
+- Stop goals already achieved:
+${completedStopGoalsText}
+- If a stop goal is achieved (or was already achieved), ask if the user wants to stop. Respect "stop/done/ok na/that's all" and end politely with no new prompts.
+- If they want to continue, keep helping but avoid repeating completed goals.
 
-═══════════════════════════════════════════════════════════
+============================================================
 
 `;
     }

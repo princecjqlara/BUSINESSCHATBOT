@@ -727,6 +727,19 @@ BEGIN
 END $$;
 
 -- ============================================================================
+-- PATCH: Ensure enable_multi_model_chatbot column exists (safe to re-run)
+-- ============================================================================
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'bot_settings') THEN
+    ALTER TABLE bot_settings 
+    ADD COLUMN IF NOT EXISTS enable_multi_model_chatbot BOOLEAN DEFAULT TRUE;
+
+    COMMENT ON COLUMN bot_settings.enable_multi_model_chatbot IS 'Toggle to allow multi-model chatbot routing; when false, only the default model is used.';
+  END IF;
+END $$;
+
+-- ============================================================================
 -- PATCH: Ensure documents support media URLs (safe to re-run)
 -- ============================================================================
 DO $$

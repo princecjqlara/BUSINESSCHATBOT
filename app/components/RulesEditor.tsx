@@ -1,11 +1,19 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Save, Bot, Plus, Trash2, GripVertical, ToggleLeft, ToggleRight, Clock, Sparkles, Target, ArrowUp, ArrowDown, Edit2 } from 'lucide-react';
+import { Save, Bot, Plus, Trash2, GripVertical, ToggleLeft, ToggleRight, Clock, Sparkles, Target, ArrowUp, ArrowDown, Edit2, Cpu } from 'lucide-react';
 import AIEditsPanel from './AIEditsPanel';
 import FollowUpMessageTester from './FollowUpMessageTester';
 import BotStyleAnalyzer from './BotStyleAnalyzer';
 import BotConfigurationAIAnalyzer from './BotConfigurationAIAnalyzer';
+
+// Available AI models for selection
+const AI_MODELS = [
+    { id: 'deepseek-ai/deepseek-v3.1', name: 'DeepSeek V3.1', description: 'Best for rule following & reasoning' },
+    { id: 'qwen/qwen3-235b-a22b', name: 'Qwen3 235B', description: 'Highest quality responses' },
+    { id: 'meta/llama-3.1-8b-instruct', name: 'Llama 3.1 8B', description: 'Fast and reliable' },
+    { id: 'mistralai/mistral-nemo-12b-instruct', name: 'Mistral NeMo 12B', description: 'Balanced performance' },
+];
 
 interface Rule {
     id: string;
@@ -37,9 +45,11 @@ export default function RulesEditor() {
     const [enableMlChatbot, setEnableMlChatbot] = useState(false);
     const [enableAiKnowledgeManagement, setEnableAiKnowledgeManagement] = useState(false);
     const [enableAiAutonomousFollowup, setEnableAiAutonomousFollowup] = useState(false);
+    const [enableMultiModelChatbot, setEnableMultiModelChatbot] = useState(true);
     const [maxSentencesPerMessage, setMaxSentencesPerMessage] = useState(3);
     const [aiDecidesMessageSplit, setAiDecidesMessageSplit] = useState(false);
     const [conversationFlow, setConversationFlow] = useState('');
+    const [defaultAiModel, setDefaultAiModel] = useState('deepseek-ai/deepseek-v3.1');
     const [instructions, setInstructions] = useState('');
     const [rules, setRules] = useState<Rule[]>([]);
     const [newRule, setNewRule] = useState('');
@@ -81,6 +91,9 @@ export default function RulesEditor() {
             if (data.enableAiAutonomousFollowup !== undefined) {
                 setEnableAiAutonomousFollowup(data.enableAiAutonomousFollowup);
             }
+            if (data.enableMultiModelChatbot !== undefined) {
+                setEnableMultiModelChatbot(Boolean(data.enableMultiModelChatbot));
+            }
             if (data.maxSentencesPerMessage !== undefined && data.maxSentencesPerMessage !== null) {
                 const val = Number(data.maxSentencesPerMessage);
                 if (val === -1) {
@@ -93,6 +106,9 @@ export default function RulesEditor() {
             }
             if (data.conversationFlow !== undefined) {
                 setConversationFlow(data.conversationFlow || '');
+            }
+            if (data.defaultAiModel !== undefined) {
+                setDefaultAiModel(data.defaultAiModel || 'deepseek-ai/deepseek-v3.1');
             }
         } catch (error) {
             console.error('Failed to fetch settings:', error);
@@ -140,12 +156,14 @@ export default function RulesEditor() {
                 enableMlChatbot,
                 enableAiKnowledgeManagement,
                 enableAiAutonomousFollowup,
+                enableMultiModelChatbot,
                 maxSentencesPerMessage: aiDecidesMessageSplit
                     ? -1  // -1 means AI decides
                     : (maxSentencesPerMessage !== null && maxSentencesPerMessage !== undefined
                         ? parseInt(String(maxSentencesPerMessage), 10)
                         : 3),
-                conversationFlow
+                conversationFlow,
+                defaultAiModel
             };
 
             console.log('[RulesEditor] Saving settings with maxSentencesPerMessage:', settingsPayload.maxSentencesPerMessage);
@@ -653,6 +671,55 @@ export default function RulesEditor() {
                         </div>
                     </div>
 
+                    {/* Default AI Model Settings */}
+                    <div className="bg-white rounded-[24px] p-8 border border-gray-200/60 shadow-sm hover:shadow-md transition-shadow">
+                        <div className="flex items-start gap-4 mb-6">
+                            <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl">
+                                <Cpu size={24} />
+                            </div>
+                            <div className="flex-1">
+                                <h3 className="text-lg font-medium text-gray-900">Default AI Model</h3>
+                                <p className="text-gray-500 text-sm mt-1">
+                                    Choose which AI model powers your chatbot. Different models have different strengths.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between bg-gray-50 p-4 rounded-2xl border border-gray-100">
+                                <div className="flex-1">
+                                    <div className="font-medium text-gray-900 mb-1">Use Multi-Model Chatbot</div>
+                                    <p className="text-sm text-gray-500">
+                                        When enabled, the bot will try multiple AI models in order and fall back if one fails. Turn this off to force responses from your default model only.
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={() => setEnableMultiModelChatbot(!enableMultiModelChatbot)}
+                                    className={`ml-4 p-2 rounded-lg transition-colors ${enableMultiModelChatbot
+                                        ? 'text-indigo-600 bg-indigo-50 hover:bg-indigo-100'
+                                        : 'text-gray-400 bg-gray-100 hover:bg-gray-200'
+                                        }`}
+                                    title={enableMultiModelChatbot ? 'Disable multi-model chatbot' : 'Enable multi-model chatbot'}
+                                >
+                                    {enableMultiModelChatbot ? <ToggleRight size={28} /> : <ToggleLeft size={28} />}
+                                </button>
+                            </div>
+                            <select
+                                value={defaultAiModel}
+                                onChange={(e) => setDefaultAiModel(e.target.value)}
+                                className="w-full px-4 py-3 bg-gray-50 border-gray-200 border focus:bg-white rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
+                            >
+                                {AI_MODELS.map((model) => (
+                                    <option key={model.id} value={model.id}>
+                                        {model.name} - {model.description}
+                                    </option>
+                                ))}
+                            </select>
+                            <p className="text-xs text-gray-500 ml-1">
+                                The selected model will be used as the primary AI for generating responses. If it fails, the system will automatically fall back to other models.
+                            </p>
+                        </div>
+                    </div>
                     {/* Human Takeover Settings */}
                     <div className="bg-white rounded-[24px] p-8 border border-gray-200/60 shadow-sm hover:shadow-md transition-shadow">
                         <div className="flex items-start gap-4 mb-6">

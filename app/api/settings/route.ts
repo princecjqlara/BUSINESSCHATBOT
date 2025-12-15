@@ -22,8 +22,10 @@ export async function GET() {
                 enableMlChatbot: false,
                 enableAiKnowledgeManagement: false,
                 enableAiAutonomousFollowup: false,
+                enableMultiModelChatbot: true,
                 maxSentencesPerMessage: 3,
                 conversationFlow: '',
+                defaultAiModel: 'deepseek-ai/deepseek-v3.1',
             });
         }
 
@@ -47,8 +49,10 @@ export async function GET() {
             enableMlChatbot: data.enable_ml_chatbot ?? false,
             enableAiKnowledgeManagement: data.enable_ai_knowledge_management ?? false,
             enableAiAutonomousFollowup: data.enable_ai_autonomous_followup ?? false,
+            enableMultiModelChatbot: data.enable_multi_model_chatbot ?? true,
             maxSentencesPerMessage: maxSentences,
             conversationFlow: data.conversation_flow || '',
+            defaultAiModel: data.default_ai_model || 'deepseek-ai/deepseek-v3.1',
         });
     } catch (error) {
         console.error('Error:', error);
@@ -78,6 +82,7 @@ export async function POST(req: Request) {
             enableMlChatbot: body.enableMlChatbot,
             enableAiKnowledgeManagement: body.enableAiKnowledgeManagement,
             enableAiAutonomousFollowup: body.enableAiAutonomousFollowup,
+            enableMultiModelChatbot: body.enableMultiModelChatbot,
             maxSentencesPerMessage: body.maxSentencesPerMessage,
             conversationFlow: body.conversationFlow
         });
@@ -109,6 +114,7 @@ export async function POST(req: Request) {
         if (body.enableMlChatbot !== undefined && body.enableMlChatbot !== null) updates.enable_ml_chatbot = Boolean(body.enableMlChatbot);
         if (body.enableAiKnowledgeManagement !== undefined && body.enableAiKnowledgeManagement !== null) updates.enable_ai_knowledge_management = Boolean(body.enableAiKnowledgeManagement);
         if (body.enableAiAutonomousFollowup !== undefined && body.enableAiAutonomousFollowup !== null) updates.enable_ai_autonomous_followup = Boolean(body.enableAiAutonomousFollowup);
+        if (body.enableMultiModelChatbot !== undefined && body.enableMultiModelChatbot !== null) updates.enable_multi_model_chatbot = Boolean(body.enableMultiModelChatbot);
         if (body.maxSentencesPerMessage !== undefined && body.maxSentencesPerMessage !== null) {
             // Allow values from -1 (AI decides), 0 (no limit), to 20
             const value = parseInt(String(body.maxSentencesPerMessage), 10);
@@ -118,6 +124,9 @@ export async function POST(req: Request) {
         }
         if (body.conversationFlow !== undefined) {
             updates.conversation_flow = body.conversationFlow === null ? null : String(body.conversationFlow);
+        }
+        if (body.defaultAiModel !== undefined && body.defaultAiModel !== null) {
+            updates.default_ai_model = String(body.defaultAiModel);
         }
 
         console.log('[Settings API] Updates object before validation:', updates);
@@ -227,8 +236,10 @@ export async function POST(req: Request) {
                             enableMlChatbot: current.enable_ml_chatbot ?? false,
                             enableAiKnowledgeManagement: current.enable_ai_knowledge_management ?? false,
                             enableAiAutonomousFollowup: current.enable_ai_autonomous_followup ?? false,
+                            enableMultiModelChatbot: current.enable_multi_model_chatbot ?? true,
                             maxSentencesPerMessage: current.max_sentences_per_message ?? 3,
                             conversationFlow: current.conversation_flow || '',
+                            defaultAiModel: current.default_ai_model || 'deepseek-ai/deepseek-v3.1',
                         });
                     }
                 }
@@ -383,12 +394,14 @@ export async function POST(req: Request) {
                     enableMlChatbot: updatedData.enable_ml_chatbot ?? body.enableMlChatbot ?? false,
                     enableAiKnowledgeManagement: updatedData.enable_ai_knowledge_management ?? body.enableAiKnowledgeManagement ?? false,
                     enableAiAutonomousFollowup: updatedData.enable_ai_autonomous_followup ?? body.enableAiAutonomousFollowup ?? false,
+                    enableMultiModelChatbot: updatedData.enable_multi_model_chatbot ?? body.enableMultiModelChatbot ?? true,
                     maxSentencesPerMessage: updatedData.max_sentences_per_message !== null && updatedData.max_sentences_per_message !== undefined
                         ? Number(updatedData.max_sentences_per_message)
                         : (body.maxSentencesPerMessage !== undefined && body.maxSentencesPerMessage !== null
                             ? parseInt(String(body.maxSentencesPerMessage), 10)
                             : 3),
                     conversationFlow: updatedData.conversation_flow || body.conversationFlow || '',
+                    defaultAiModel: updatedData.default_ai_model || body.defaultAiModel || 'deepseek-ai/deepseek-v3.1',
                 };
 
                 console.log('[Settings API] Returning response data:', {
@@ -429,15 +442,16 @@ export async function POST(req: Request) {
             // Insert new row
             const insertData: Record<string, any> = {
                 bot_name: body.botName || 'Assistant',
-                bot_tone: body.botTone || 'helpful and professional',
-                facebook_verify_token: body.facebookVerifyToken || 'TEST_TOKEN',
-                facebook_page_access_token: body.facebookPageAccessToken || null,
-                human_takeover_timeout_minutes: body.humanTakeoverTimeoutMinutes ?? 5,
-                enable_best_time_contact: body.enableBestTimeContact ?? false,
-                enable_ml_chatbot: body.enableMlChatbot ?? false,
-                enable_ai_knowledge_management: body.enableAiKnowledgeManagement ?? false,
-                enable_ai_autonomous_followup: body.enableAiAutonomousFollowup ?? false,
-            };
+            bot_tone: body.botTone || 'helpful and professional',
+            facebook_verify_token: body.facebookVerifyToken || 'TEST_TOKEN',
+            facebook_page_access_token: body.facebookPageAccessToken || null,
+            human_takeover_timeout_minutes: body.humanTakeoverTimeoutMinutes ?? 5,
+            enable_best_time_contact: body.enableBestTimeContact ?? false,
+            enable_ml_chatbot: body.enableMlChatbot ?? false,
+            enable_ai_knowledge_management: body.enableAiKnowledgeManagement ?? false,
+            enable_ai_autonomous_followup: body.enableAiAutonomousFollowup ?? false,
+            enable_multi_model_chatbot: body.enableMultiModelChatbot ?? true,
+        };
 
             // Only include max_sentences_per_message if it was provided
             if (body.maxSentencesPerMessage !== undefined && body.maxSentencesPerMessage !== null) {
@@ -455,6 +469,13 @@ export async function POST(req: Request) {
             // Include conversation_flow if provided
             if (body.conversationFlow !== undefined) {
                 insertData.conversation_flow = body.conversationFlow === null ? null : String(body.conversationFlow);
+            }
+
+            // Include default_ai_model if provided
+            if (body.defaultAiModel !== undefined && body.defaultAiModel !== null) {
+                insertData.default_ai_model = String(body.defaultAiModel);
+            } else {
+                insertData.default_ai_model = 'deepseek-ai/deepseek-v3.1';
             }
 
             const { data: insertedData, error } = await supabase
@@ -480,12 +501,14 @@ export async function POST(req: Request) {
                     enableMlChatbot: insertedData.enable_ml_chatbot ?? body.enableMlChatbot ?? false,
                     enableAiKnowledgeManagement: insertedData.enable_ai_knowledge_management ?? body.enableAiKnowledgeManagement ?? false,
                     enableAiAutonomousFollowup: insertedData.enable_ai_autonomous_followup ?? body.enableAiAutonomousFollowup ?? false,
+                    enableMultiModelChatbot: insertedData.enable_multi_model_chatbot ?? body.enableMultiModelChatbot ?? true,
                     maxSentencesPerMessage: insertedData.max_sentences_per_message !== null && insertedData.max_sentences_per_message !== undefined
                         ? Number(insertedData.max_sentences_per_message)
                         : (body.maxSentencesPerMessage !== undefined && body.maxSentencesPerMessage !== null
                             ? parseInt(String(body.maxSentencesPerMessage), 10)
                             : 3),
                     conversationFlow: insertedData.conversation_flow || body.conversationFlow || '',
+                    defaultAiModel: insertedData.default_ai_model || body.defaultAiModel || 'deepseek-ai/deepseek-v3.1',
                 });
             }
         }
@@ -500,10 +523,13 @@ export async function POST(req: Request) {
             enableBestTimeContact: body.enableBestTimeContact,
             enableMlChatbot: body.enableMlChatbot,
             enableAiKnowledgeManagement: body.enableAiKnowledgeManagement,
+            enableAiAutonomousFollowup: body.enableAiAutonomousFollowup,
+            enableMultiModelChatbot: body.enableMultiModelChatbot ?? true,
             maxSentencesPerMessage: body.maxSentencesPerMessage !== undefined && body.maxSentencesPerMessage !== null
                 ? parseInt(String(body.maxSentencesPerMessage), 10)
                 : 3,
             conversationFlow: body.conversationFlow || '',
+            defaultAiModel: body.defaultAiModel || 'deepseek-ai/deepseek-v3.1',
         });
     } catch (error: any) {
         console.error('[Settings API] Unexpected error:', error);
