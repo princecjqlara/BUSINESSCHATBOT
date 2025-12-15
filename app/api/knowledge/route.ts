@@ -7,30 +7,29 @@ export async function GET() {
         const { data, error } = await supabase
             .from('documents')
             .select('id, content, metadata, folder_id, category_id, edited_by_ai, last_ai_edit_at, media_urls')
-            .order('id', { ascending: false })
-            .limit(50);
+            .order('id', { ascending: false });
 
         if (error) {
             console.error('[API /knowledge] Supabase error:', error);
             return NextResponse.json({ error: error.message, details: error }, { status: 500 });
         }
 
-    // Check which documents were edited by ML AI (from ml_knowledge_changes)
-    const documentIds = data?.map((item: any) => item.id) || [];
-    let mlEditedIds: Set<string> = new Set();
-    
-    if (documentIds.length > 0 && data?.some((item: any) => item.edited_by_ai)) {
-        const { data: mlChanges } = await supabase
-            .from('ml_knowledge_changes')
-            .select('entity_id')
-            .eq('entity_type', 'document')
-            .in('entity_id', documentIds.map(String))
-            .eq('undone', false);
+        // Check which documents were edited by ML AI (from ml_knowledge_changes)
+        const documentIds = data?.map((item: any) => item.id) || [];
+        let mlEditedIds: Set<string> = new Set();
         
-        if (mlChanges) {
-            mlEditedIds = new Set(mlChanges.map((change: any) => String(change.entity_id)));
+        if (documentIds.length > 0 && data?.some((item: any) => item.edited_by_ai)) {
+            const { data: mlChanges } = await supabase
+                .from('ml_knowledge_changes')
+                .select('entity_id')
+                .eq('entity_type', 'document')
+                .in('entity_id', documentIds.map(String))
+                .eq('undone', false);
+            
+            if (mlChanges) {
+                mlEditedIds = new Set(mlChanges.map((change: any) => String(change.entity_id)));
+            }
         }
-    }
 
         // Handle null/undefined data from Supabase
         if (!data || !Array.isArray(data)) {
