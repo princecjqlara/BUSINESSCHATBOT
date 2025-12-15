@@ -6,7 +6,7 @@ import { processKnowledgeImprovements } from './mlKnowledgeManagement';
 import { detectConversionIntent, recordConversion } from './mlConversionTracking';
 import { limitSentences, splitIntoMessages } from './sentenceLimiter';
 import { formatMessage, formatMessages } from './messageFormatter';
-import { checkAndRecordGoalCompletions, getActiveBotGoals } from './goalTrackingService';
+import { checkAndRecordGoalCompletions, getActiveBotGoals, getCompletedGoals } from './goalTrackingService';
 import { analyzeMessage, getResponseGuidance, type NLPAnalysisResult } from './nlpService';
 import { validateResponse, logValidationResult, pickBestResponse } from './responseValidationService';
 
@@ -292,6 +292,68 @@ function storeMessageAsync(senderId: string, role: 'user' | 'assistant', content
     })();
 }
 
+// Extract a clean first name from any string (drops brackets/punctuation)
+function extractFirstName(rawName?: string | null): string | null {
+    if (!rawName) return null;
+
+    const cleaned = rawName
+        .replace(/[\[\]\{\}\(\)]/g, ' ')
+        .replace(/[^A-Za-z' -]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    if (!cleaned) return null;
+    const first = cleaned.split(' ')[0];
+    if (!first) return null;
+
+    return first.charAt(0).toUpperCase() + first.slice(1);
+}
+
+// Prefer lead name, then NLP-detected names
+function getCustomerFirstName(leadContext: LeadContext | null, nlpAnalysis?: NLPAnalysisResult | null): string | null {
+    const candidates: string[] = [];
+
+    if (leadContext?.leadName) {
+        candidates.push(leadContext.leadName);
+    }
+    if (nlpAnalysis?.entities?.names?.length) {
+        candidates.push(...nlpAnalysis.entities.names);
+    }
+
+    for (const candidate of candidates) {
+        const extracted = extractFirstName(candidate);
+        if (extracted) {
+            return extracted;
+        }
+    }
+
+    return null;
+}
+
+// Replace or strip name placeholders before sending to the user
+function personalizeContentWithName(content: string, firstName: string | null): string {
+    if (!content) return content;
+
+    let personalized = content;
+
+    const placeholderPattern = /\[\s*name\s*\]|\[\s*Name\s*\]|\{\{\s*name\s*\}\}|\{\{\s*first_name\s*\}\}/gi;
+    const bracketedNamePattern = /\[([A-Za-z][A-Za-z'\-]*(?:\s+[A-Za-z][A-Za-z'\-]*)*)\]/g;
+
+    if (firstName) {
+        personalized = personalized.replace(placeholderPattern, firstName);
+        personalized = personalized.replace(bracketedNamePattern, '$1');
+    } else {
+        personalized = personalized.replace(placeholderPattern, '');
+        personalized = personalized.replace(bracketedNamePattern, '$1');
+    }
+
+    // Clean up spacing around punctuation that might be left after removal
+    personalized = personalized.replace(/\s+([!?.,])/g, '$1');
+    personalized = personalized.replace(/\s{2,}/g, ' ').trim();
+
+    return personalized;
+}
+
 // Image context type for passing image analysis to the chatbot
 export interface ImageContext {
     isReceipt: boolean;
@@ -323,9 +385,11 @@ export async function getBotResponse(
     const enableMlChatbot = settings.enable_ml_chatbot ?? false;
     const enableAiKnowledgeManagement = settings.enable_ai_knowledge_management ?? false;
     const enableAiAutonomousFollowup = settings.enable_ai_autonomous_followup ?? false;
+    const enableMultiModelChatbot = settings.enable_multi_model_chatbot ?? true;
     const enableResponseValidation = settings.enable_response_validation ?? false;
     const maxSentencesPerMessage = settings.max_sentences_per_message ?? 3;
     const conversationFlow = settings.conversation_flow || '';
+    const defaultAiModel = settings.default_ai_model || 'deepseek-ai/deepseek-v3.1';
 
     // Store user message immediately (fire and forget)
     storeMessageAsync(senderId, 'user', userMessage);
@@ -366,17 +430,19 @@ export async function getBotResponse(
     }
 
     // Run independent operations in PARALLEL
-    const [rules, history, contextResult, instructions, botGoals, leadContext] = await Promise.all([
+    const [rules, history, contextResult, instructions, botGoals, leadContext, completedGoalIds] = await Promise.all([
         getBotRules(),
         getConversationHistory(senderId),
         searchDocuments(userMessage, 5, previewDocumentContent), // Pass preview content
         getBotInstructions(),
         getActiveBotGoals(),
         getLeadContext(senderId), // Get lead info for AI context
+        getCompletedGoals(undefined, senderId),
     ]);
 
     const context = contextResult.content;
     const mediaUrls = contextResult.mediaUrls || [];
+    const customerFirstName = getCustomerFirstName(leadContext, nlpAnalysis);
 
     console.log(`Parallel fetch took ${Date.now() - startTime}ms - rules: ${rules.length}, history: ${history.length}, goals: ${botGoals.length}, isPaymentQuery: ${isPaymentRelated}`);
     console.log('[RAG CONTEXT]:', context ? context.substring(0, 500) + '...' : 'NO CONTEXT RETRIEVED');
@@ -470,6 +536,21 @@ ${maxSentencesPerMessage > 0
             ? `- You MUST keep your response to a maximum of ${maxSentencesPerMessage} sentence${maxSentencesPerMessage === 1 ? '' : 's'}.\n- Be concise and direct.\n- If you need to say more, prioritize the most important information.\n\n`
             : '- No strict sentence limit, but keep messages conversational and engaging.\n\n'}
 `;
+
+    // Add clear guidance for name handling to avoid bracketed placeholders
+    if (customerFirstName) {
+        systemPrompt += `CUSTOMER NAME:
+- Their name is "${customerFirstName}". Use it naturally in greetings (e.g., "Hi ${customerFirstName}!").
+- NEVER use placeholders like [Name] or {{name}} - always write the real name without brackets.
+
+`;
+    } else {
+        systemPrompt += `NAME HANDLING:
+- We don't have their name yet. Do NOT use placeholders like [Name] or {{name}}.
+- Use a warm generic greeting until the customer shares their name.
+
+`;
+    }
 
     // Add instructions from database if available
     if (instructions) {
@@ -857,12 +938,19 @@ INSTRUCTION: Respond naturally about the image. If they might be trying to send 
 
         // Model cascade - try each in order until one works
         // Ordered by quality (best first) and reliability
-        const models = [
-            "deepseek-ai/deepseek-v3.1",      // Primary: DeepSeek V3.1 (best for rule following & reasoning)
-            "qwen/qwen3-235b-a22b",           // Fallback 1: Qwen3 (best quality)
-            "meta/llama-3.1-8b-instruct",     // Fallback 2: Llama 3.1 8B (fast, reliable)
-            "mistralai/mistral-nemo-12b-instruct",  // Fallback 3: Mistral NeMo 12B
+        const preferredModels = [
+            defaultAiModel,                   // User-selected primary model
+            "deepseek-ai/deepseek-v3.1",      // Strong reasoning & rule following
+            "qwen/qwen3-235b-a22b",           // High quality fallback
+            "meta/llama-3.1-8b-instruct",     // Fast, reliable fallback
+            "mistralai/mistral-nemo-12b-instruct",  // Additional safety fallback
         ];
+
+        const models = enableMultiModelChatbot
+            ? Array.from(new Set(preferredModels))
+            : [defaultAiModel || "deepseek-ai/deepseek-v3.1"];
+
+        console.log(`[LLM] Multi-model chatbot ${enableMultiModelChatbot ? 'enabled' : 'disabled'}, model order: ${models.join(' -> ')}`);
 
         let lastError: any = null;
         for (const model of models) {
@@ -939,7 +1027,8 @@ INSTRUCTION: Respond naturally about the image. If they might be trying to send 
         }
 
         // Format the response content first (normalize spacing and line breaks)
-        const formattedContent = formatMessage(validatedContent);
+        const personalizedContent = personalizeContentWithName(validatedContent, customerFirstName);
+        const formattedContent = formatMessage(personalizedContent);
 
         // Split into multiple messages if sentence limit is configured
         let finalResponse: string | string[];
