@@ -44,9 +44,10 @@ export async function getBestMLModel(): Promise<string> {
 }
 
 export interface KnowledgeChange {
-    changeType: 'add' | 'update' | 'delete';
-    entityType: 'document' | 'rule' | 'instruction' | 'personality';
+    changeType: 'add' | 'update' | 'delete' | 'merge'; // Added 'merge' for combining documents
+    entityType: 'document' | 'rule' | 'instruction' | 'personality' | 'goal' | 'conversationFlow' | 'category';
     entityId?: string;
+    mergeSourceIds?: string[]; // For merge operations - IDs of documents to merge
     oldValue?: any;
     newValue?: any;
     reason: string;
@@ -61,7 +62,7 @@ export async function analyzeKnowledgeGaps(
     failedQueries: string[] = []
 ): Promise<KnowledgeChange[]> {
     try {
-        const analysisPrompt = `You are an AI assistant analyzing conversation patterns to improve the knowledge base.
+        const analysisPrompt = `You are an AI assistant analyzing conversation patterns to improve the knowledge base and bot configuration.
 
 Conversation History:
 ${conversationHistory.map(msg => `${msg.role}: ${msg.content}`).join('\n')}
@@ -69,16 +70,40 @@ ${conversationHistory.map(msg => `${msg.role}: ${msg.content}`).join('\n')}
 Failed Queries (questions that couldn't be answered well):
 ${failedQueries.join('\n')}
 
-Based on this analysis, suggest knowledge base improvements:
-1. What information is missing?
-2. What rules should be added or updated?
-3. What instructions would help the bot respond better?
+Based on this analysis, suggest improvements in these areas:
+
+1. DOCUMENTS - Knowledge base content:
+   - Missing information that should be added
+   - Documents with similar content that should be merged
+   - Outdated content that should be updated or deleted
+   - Documents that need proper categorization
+
+2. CATEGORIES - Document organization:
+   - New categories needed to organize documents
+   - Categories that are empty and should be deleted
+
+3. RULES - Bot behavior rules:
+   - New rules based on conversation patterns
+   - Rules that need updating
+   - Rules that are no longer relevant
+
+4. GOALS - Bot conversation goals:
+   - New goals based on what customers are trying to achieve
+   - Goals that need priority adjustment
+
+5. CONVERSATION FLOW - Response structure:
+   - Improvements to conversation flow steps
+
+6. PERSONALITY - Bot tone and style:
+   - Tone adjustments based on customer interactions
 
 Respond in JSON format with an array of suggested changes:
 [
   {
-    "changeType": "add|update|delete",
-    "entityType": "document|rule|instruction|personality",
+    "changeType": "add|update|delete|merge",
+    "entityType": "document|rule|instruction|personality|goal|conversationFlow|category",
+    "entityId": "id-if-updating-existing",
+    "mergeSourceIds": ["id1", "id2"] // only for merge operations
     "newValue": { ... },
     "reason": "why this change helps",
     "confidenceScore": 0.0-1.0
@@ -180,6 +205,10 @@ export async function applyKnowledgeChange(change: KnowledgeChange, autoApprove:
         // Apply the change based on entity type
         switch (change.entityType) {
             case 'document':
+                // Handle merge operation for documents
+                if (change.changeType === 'merge') {
+                    return await applyDocumentMerge(change);
+                }
                 return await applyDocumentChange(change);
             case 'rule':
                 return await applyRuleChange(change);
@@ -187,6 +216,12 @@ export async function applyKnowledgeChange(change: KnowledgeChange, autoApprove:
                 return await applyInstructionChange(change);
             case 'personality':
                 return await applyPersonalityChange(change);
+            case 'goal':
+                return await applyGoalChange(change);
+            case 'conversationFlow':
+                return await applyConversationFlowChange(change);
+            case 'category':
+                return await applyCategoryChange(change);
             default:
                 console.error('[ML Knowledge] Unknown entity type:', change.entityType);
                 return false;
@@ -411,6 +446,181 @@ async function applyPersonalityChange(change: KnowledgeChange): Promise<boolean>
         return !error;
     } catch (error) {
         console.error('[ML Knowledge] Error applying personality change:', error);
+        return false;
+    }
+}
+
+/**
+ * Apply goal change (bot goals CRUD)
+ */
+async function applyGoalChange(change: KnowledgeChange): Promise<boolean> {
+    try {
+        if (change.changeType === 'add' && change.newValue) {
+            const { error } = await supabase
+                .from('bot_goals')
+                .insert({
+                    goal_name: change.newValue.goalName || change.newValue.name || change.newValue,
+                    goal_description: change.newValue.goalDescription || change.newValue.description || '',
+                    priority_order: change.newValue.priorityOrder || null,
+                    is_active: true,
+                    is_optional: change.newValue.isOptional || false,
+                });
+            console.log('[ML Knowledge] Created new bot goal:', change.newValue.goalName || change.newValue);
+            return !error;
+        } else if (change.changeType === 'update' && change.entityId && change.newValue) {
+            const updates: Record<string, any> = {};
+            if (change.newValue.goalName) updates.goal_name = change.newValue.goalName;
+            if (change.newValue.goalDescription !== undefined) updates.goal_description = change.newValue.goalDescription;
+            if (change.newValue.priorityOrder !== undefined) updates.priority_order = change.newValue.priorityOrder;
+            if (change.newValue.isActive !== undefined) updates.is_active = change.newValue.isActive;
+            if (change.newValue.isOptional !== undefined) updates.is_optional = change.newValue.isOptional;
+
+            const { error } = await supabase
+                .from('bot_goals')
+                .update(updates)
+                .eq('id', change.entityId);
+            console.log('[ML Knowledge] Updated bot goal:', change.entityId);
+            return !error;
+        } else if (change.changeType === 'delete' && change.entityId) {
+            const { error } = await supabase
+                .from('bot_goals')
+                .delete()
+                .eq('id', change.entityId);
+            console.log('[ML Knowledge] Deleted bot goal:', change.entityId);
+            return !error;
+        }
+        return false;
+    } catch (error) {
+        console.error('[ML Knowledge] Error applying goal change:', error);
+        return false;
+    }
+}
+
+/**
+ * Apply conversation flow change (updates bot_settings.conversation_flow)
+ */
+async function applyConversationFlowChange(change: KnowledgeChange): Promise<boolean> {
+    try {
+        if (change.changeType === 'update' && change.newValue) {
+            const { error } = await supabase
+                .from('bot_settings')
+                .update({
+                    conversation_flow: change.newValue.flow || change.newValue
+                })
+                .limit(1);
+            console.log('[ML Knowledge] Updated conversation flow');
+            return !error;
+        }
+        return false;
+    } catch (error) {
+        console.error('[ML Knowledge] Error applying conversation flow change:', error);
+        return false;
+    }
+}
+
+/**
+ * Apply category change (knowledge categories CRUD)
+ */
+async function applyCategoryChange(change: KnowledgeChange): Promise<boolean> {
+    try {
+        if (change.changeType === 'add' && change.newValue) {
+            const { data, error } = await supabase
+                .from('knowledge_categories')
+                .insert({
+                    name: change.newValue.name || change.newValue,
+                    type: change.newValue.type || 'general',
+                    color: change.newValue.color || 'gray',
+                })
+                .select()
+                .single();
+            console.log('[ML Knowledge] Created new category:', data?.name);
+            return !error;
+        } else if (change.changeType === 'delete' && change.entityId) {
+            // First, move documents in this category to uncategorized (null)
+            await supabase
+                .from('documents')
+                .update({ category_id: null })
+                .eq('category_id', change.entityId);
+
+            const { error } = await supabase
+                .from('knowledge_categories')
+                .delete()
+                .eq('id', change.entityId);
+            console.log('[ML Knowledge] Deleted category:', change.entityId);
+            return !error;
+        }
+        return false;
+    } catch (error) {
+        console.error('[ML Knowledge] Error applying category change:', error);
+        return false;
+    }
+}
+
+/**
+ * Apply document merge (combine multiple documents into one)
+ */
+async function applyDocumentMerge(change: KnowledgeChange): Promise<boolean> {
+    try {
+        if (!change.mergeSourceIds || change.mergeSourceIds.length < 2) {
+            console.error('[ML Knowledge] Merge requires at least 2 source document IDs');
+            return false;
+        }
+
+        // Fetch all source documents
+        const { data: sourceDocuments, error: fetchError } = await supabase
+            .from('documents')
+            .select('*')
+            .in('id', change.mergeSourceIds);
+
+        if (fetchError || !sourceDocuments || sourceDocuments.length < 2) {
+            console.error('[ML Knowledge] Failed to fetch source documents for merge');
+            return false;
+        }
+
+        // Combine content from all documents
+        const mergedContent = sourceDocuments
+            .map((doc: { content: string }) => doc.content)
+            .join('\n\n---\n\n');
+
+        // Use the first document's category, or the specified one
+        const categoryId = change.newValue?.categoryId || sourceDocuments[0].category_id;
+
+        // Create the merged document
+        const { data: newDoc, error: insertError } = await supabase
+            .from('documents')
+            .insert({
+                content: mergedContent,
+                metadata: {
+                    merged_from: change.mergeSourceIds,
+                    merged_at: new Date().toISOString(),
+                    original_count: sourceDocuments.length,
+                },
+                category_id: categoryId,
+                edited_by_ai: true,
+                last_ai_edit_at: new Date().toISOString(),
+            })
+            .select()
+            .single();
+
+        if (insertError || !newDoc) {
+            console.error('[ML Knowledge] Failed to create merged document');
+            return false;
+        }
+
+        // Delete the source documents
+        const { error: deleteError } = await supabase
+            .from('documents')
+            .delete()
+            .in('id', change.mergeSourceIds);
+
+        if (deleteError) {
+            console.error('[ML Knowledge] Warning: merged document created but failed to delete sources');
+        }
+
+        console.log(`[ML Knowledge] Merged ${sourceDocuments.length} documents into ${newDoc.id}`);
+        return true;
+    } catch (error) {
+        console.error('[ML Knowledge] Error applying document merge:', error);
         return false;
     }
 }
