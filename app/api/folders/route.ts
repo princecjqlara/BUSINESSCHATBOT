@@ -5,11 +5,28 @@ import { supabase } from '@/app/lib/supabase';
 export async function GET() {
     try {
         console.log('[Folders API] Fetching folders...');
-        
-        const { data, error } = await supabase
+
+        // Try to select with category_id first, fall back if column doesn't exist
+        let data, error;
+
+        const result = await supabase
             .from('document_folders')
             .select('id, name, created_at, category_id')
             .order('created_at', { ascending: true });
+
+        data = result.data;
+        error = result.error;
+
+        // If category_id column doesn't exist, try without it
+        if (error?.message?.includes('category_id')) {
+            console.log('[Folders API] category_id column not found, fetching without it');
+            const fallbackResult = await supabase
+                .from('document_folders')
+                .select('id, name, created_at')
+                .order('created_at', { ascending: true });
+            data = fallbackResult.data;
+            error = fallbackResult.error;
+        }
 
         if (error) {
             console.error('[Folders API] Supabase error:', {
@@ -18,15 +35,15 @@ export async function GET() {
                 details: error.details,
                 hint: error.hint
             });
-            
+
             // If table doesn't exist, return empty array instead of error
-            if (error.message?.includes('relation "document_folders" does not exist') || 
+            if (error.message?.includes('relation "document_folders" does not exist') ||
                 error.code === '42P01' ||
                 error.message?.includes('does not exist')) {
                 console.warn('[Folders API] document_folders table does not exist, returning empty array');
                 return NextResponse.json([]);
             }
-            
+
             // For other errors, still return empty array to prevent UI breakage
             // but log the error for debugging
             console.warn('[Folders API] Database error occurred, returning empty array to prevent UI breakage');
