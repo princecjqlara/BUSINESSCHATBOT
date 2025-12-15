@@ -205,9 +205,9 @@ export async function searchDocuments(query: string, limit: number = 5, previewD
         const seenDocumentIds = new Set<string>(); // Track documentIds to avoid duplicate mediaUrls
         const allMediaUrls = new Set<string>(); // Collect unique media URLs
 
-        // Only collect media from semantically matched documents with HIGH similarity (>= 0.5)
+        // Only collect media from semantically matched documents with reasonable similarity (>= 0.3)
         // This prevents sending irrelevant media from fallback/recent docs
-        const MEDIA_SIMILARITY_THRESHOLD = 0.5;
+        const MEDIA_SIMILARITY_THRESHOLD = 0.3;
 
         // Add semantic results first (highest relevance)
         for (const doc of semanticDocs) {
@@ -273,6 +273,13 @@ export async function searchDocuments(query: string, limit: number = 5, previewD
         if (previewDocumentContent && previewDocumentContent.trim().length > 0) {
             console.log(`[RAG] Including preview document content (${previewDocumentContent.length} chars)`);
             content = previewDocumentContent + '\n\n' + content;
+        }
+
+        // Log media URL results
+        if (allMediaUrls.size > 0) {
+            console.log(`[RAG Media] Collected ${allMediaUrls.size} media URL(s): ${Array.from(allMediaUrls).map(u => u.substring(0, 50) + '...').join(', ')}`);
+        } else {
+            console.log('[RAG Media] No media URLs collected from documents');
         }
 
         return { content, mediaUrls: Array.from(allMediaUrls) };
