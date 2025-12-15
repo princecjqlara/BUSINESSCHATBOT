@@ -745,8 +745,15 @@ INSTRUCTION: Respond naturally about the image. If they might be trying to send 
         { role: 'system', content: systemPrompt },
     ];
 
-    // Add conversation history
+    // Add conversation history, but exclude any message that matches the current user message
+    // This prevents duplication when the async storeMessageAsync completes before getConversationHistory
     for (const msg of history) {
+        // Skip if this is a duplicate of the current message we're about to add
+        // (can happen due to race condition with storeMessageAsync)
+        if (msg.role === 'user' && msg.content === userMessage) {
+            console.log('[History] Skipping duplicate user message from history');
+            continue;
+        }
         messages.push({
             role: msg.role as 'user' | 'assistant',
             content: msg.content,
