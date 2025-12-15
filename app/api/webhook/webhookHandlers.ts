@@ -8,6 +8,80 @@ import { handleImageMessage, handleMessage, handlePostback, handleReferral } fro
 const processedMessages = new Set<string>();
 const MAX_PROCESSED_CACHE = 1000;
 
+// Message batching system to prevent duplicate responses when contact sends multiple messages simultaneously
+interface PendingBatch {
+    messages: string[];
+    pageId?: string;
+    timeoutId: ReturnType<typeof setTimeout>;
+    processing: boolean;
+}
+
+const pendingBatches = new Map<string, PendingBatch>();
+const BATCH_DELAY_MS = 500; // Wait 500ms to collect all messages from the same sender
+
+/**
+ * Process a batched set of messages from the same sender
+ * Called after the debounce delay
+ */
+async function processBatchedMessages(senderPsid: string): Promise<void> {
+    const batch = pendingBatches.get(senderPsid);
+    if (!batch || batch.processing || batch.messages.length === 0) {
+        pendingBatches.delete(senderPsid);
+        return;
+    }
+
+    // Mark as processing to prevent duplicate processing
+    batch.processing = true;
+
+    try {
+        // Combine all messages into a single message for the bot
+        // Use double newlines to separate distinct messages for better AI understanding
+        const combinedMessage = batch.messages.length === 1
+            ? batch.messages[0]
+            : batch.messages.join('\n\n');
+
+        console.log(`[Message Batch] Processing ${batch.messages.length} message(s) from ${senderPsid} as single response`);
+        console.log(`[Message Batch] Combined message: ${combinedMessage.substring(0, 100)}...`);
+
+        await handleMessage(senderPsid, combinedMessage, batch.pageId);
+    } catch (error) {
+        console.error('[Message Batch] Error processing batch:', error);
+    } finally {
+        pendingBatches.delete(senderPsid);
+    }
+}
+
+/**
+ * Queue a message for batched processing
+ * If more messages arrive within BATCH_DELAY_MS, they'll be combined
+ */
+function queueMessageForBatch(senderPsid: string, messageText: string, pageId?: string): void {
+    const existingBatch = pendingBatches.get(senderPsid);
+
+    if (existingBatch && !existingBatch.processing) {
+        // Add to existing batch and reset timer
+        existingBatch.messages.push(messageText);
+        clearTimeout(existingBatch.timeoutId);
+        existingBatch.timeoutId = setTimeout(() => {
+            waitUntil(processBatchedMessages(senderPsid));
+        }, BATCH_DELAY_MS);
+        console.log(`[Message Batch] Added message #${existingBatch.messages.length} to batch for ${senderPsid}`);
+    } else {
+        // Create new batch
+        const timeoutId = setTimeout(() => {
+            waitUntil(processBatchedMessages(senderPsid));
+        }, BATCH_DELAY_MS);
+
+        pendingBatches.set(senderPsid, {
+            messages: [messageText],
+            pageId,
+            timeoutId,
+            processing: false,
+        });
+        console.log(`[Message Batch] Created new batch for ${senderPsid}`);
+    }
+}
+
 function cleanupProcessedMessages() {
     if (processedMessages.size > MAX_PROCESSED_CACHE) {
         const toDelete = Array.from(processedMessages).slice(0, processedMessages.size - MAX_PROCESSED_CACHE);
@@ -130,11 +204,9 @@ export async function handlePostWebhook(req: Request) {
                     // (if there's an image, the image handler already processes the text)
                     if (messageText && !hasImageAttachment) {
                         console.log('Message text:', messageText);
-                        waitUntil(
-                            handleMessage(sender_psid, messageText, recipient_psid).catch(err => {
-                                console.error('Error handling message:', err);
-                            })
-                        );
+                        // Use batching to prevent spam when multiple messages arrive simultaneously
+                        // Messages from same sender within 500ms will be combined into a single response
+                        queueMessageForBatch(sender_psid, messageText, recipient_psid);
                     }
                 }
             }
