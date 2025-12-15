@@ -9,14 +9,19 @@
 import OpenAI from 'openai';
 import { supabase } from './supabase';
 
-// GPT OSS 120B equivalent models via NVIDIA NIM
+// GPT OSS 120B and Nemotron models via NVIDIA NIM
 // Try the best models first for highest quality validation
+// Models are tried in order with timeout - if too slow, skip to next
 const VALIDATION_MODELS = [
-    'nvidia/gpt-43b-002',           // GPT OSS 120B equivalent
-    'meta/llama-3.1-405b-instruct', // Fallback: Best Llama
-    'qwen/qwen3-235b-a22b',         // Fallback: Qwen
-    'meta/llama-3.1-70b-instruct',  // Fallback: Smaller Llama
+    'nvidia/llama-3.1-nemotron-ultra-253b-v1', // Nemotron Ultra 253B (best)
+    'nvidia/llama-3.1-nemotron-70b-instruct',  // Nemotron 70B (fast fallback)
+    'meta/llama-3.1-405b-instruct',            // Llama 405B
+    'qwen/qwen3-235b-a22b',                    // Qwen 235B
+    'meta/llama-3.1-70b-instruct',             // Llama 70B (fast fallback)
 ];
+
+// Timeout for model availability check (ms)
+const MODEL_CHECK_TIMEOUT_MS = 3000;
 
 const client = new OpenAI({
     baseURL: 'https://integrate.api.nvidia.com/v1',
@@ -41,26 +46,45 @@ interface ValidationContext {
 }
 
 /**
- * Get the best available validation model
+ * Helper to add timeout to a promise
+ */
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+    return Promise.race([
+        promise,
+        new Promise<T>((_, reject) =>
+            setTimeout(() => reject(new Error(`Timeout after ${timeoutMs}ms`)), timeoutMs)
+        ),
+    ]);
+}
+
+/**
+ * Get the best available validation model with timeout logic
+ * If a model takes too long, skip to the next one
  */
 async function getBestValidationModel(): Promise<string> {
     for (const model of VALIDATION_MODELS) {
         try {
-            await client.chat.completions.create({
-                model,
-                messages: [{ role: 'user', content: 'test' }],
-                max_tokens: 1,
-            });
+            // Test model with timeout - if it takes too long, skip to next
+            await withTimeout(
+                client.chat.completions.create({
+                    model,
+                    messages: [{ role: 'user', content: 'test' }],
+                    max_tokens: 1,
+                }),
+                MODEL_CHECK_TIMEOUT_MS
+            );
             console.log(`[Response Validation] Using model: ${model}`);
             return model;
-        } catch (error) {
-            console.log(`[Response Validation] Model ${model} not available, trying next...`);
+        } catch (error: any) {
+            const reason = error.message?.includes('Timeout') ? 'timeout' : 'not available';
+            console.log(`[Response Validation] Model ${model} ${reason}, trying next...`);
             continue;
         }
     }
-    // Fallback to last model
-    console.log(`[Response Validation] Using fallback model: ${VALIDATION_MODELS[VALIDATION_MODELS.length - 1]}`);
-    return VALIDATION_MODELS[VALIDATION_MODELS.length - 1];
+    // Fallback to fastest model
+    const fallbackModel = VALIDATION_MODELS[VALIDATION_MODELS.length - 1];
+    console.log(`[Response Validation] Using fallback model: ${fallbackModel}`);
+    return fallbackModel;
 }
 
 /**
@@ -100,6 +124,7 @@ VALIDATION CRITERIA:
 2. HALLUCINATION CHECK: Is the information in the response grounded in the knowledge base? Does it make up prices, features, or details not in the knowledge base?
 3. CONSISTENCY: Is the response consistent with the conversation context?
 4. TONE CHECK: ${context.botTone ? `Does it match the expected tone: ${context.botTone}?` : 'Is the tone appropriate?'}
+5. REPETITION CHECK (CRITICAL): Does the response ask a question that was already asked before in the conversation? Look at the recent conversation - if the bot already asked about budget/price/timeline/business type, it MUST NOT ask again. This is a MAJOR issue if detected.
 
 YOUR TASK:
 Analyze the bot response below and return a JSON object with:

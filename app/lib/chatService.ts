@@ -565,12 +565,22 @@ ${leadContext.lastBotMessages.length > 0
                     ? leadContext.lastBotMessages.map((msg, i) => `${i + 1}. "${msg.substring(0, 100)}${msg.length > 100 ? '...' : ''}"`).join('\n')
                     : '(No previous messages)'}
 
-🚫 MESSAGE REPETITION RULE (CRITICAL):
+🚫 MESSAGE REPETITION RULE (CRITICAL - ZERO TOLERANCE):
 - NEVER repeat the exact same message or similar phrasing as your recent messages listed above
+- NEVER ask a question you already asked - even if the user didn't answer it properly
 - Each response must be UNIQUE and move the conversation forward
-- Only repeat information if the customer EXPLICITLY asks you to repeat or clarify
-- If asked "can you repeat that?" or "what did you say?" - then you may repeat
-- Otherwise, always provide fresh, contextual responses
+- If you already asked about budget/price/timeline/purpose - DO NOT ASK AGAIN
+
+🚨 IF USER SAYS "DI KO ALAM" / "WALA PA" / "NOT SURE":
+- This IS their answer - ACCEPT IT
+- DO NOT repeat the question
+- MOVE to a completely different topic
+- Example: If they don't know budget → ask about timeline, features, or purpose instead
+
+⛔ BANNED BEHAVIOR:
+- Asking "anong budget?" after user said "wala pa budget" = BANNED
+- Asking "anong type of business?" after user already answered = BANNED
+- Repeating any question from your recent messages above = BANNED
 
 `;
         }
