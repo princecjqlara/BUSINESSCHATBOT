@@ -6,7 +6,7 @@ export async function GET() {
     try {
         const { data: rules, error } = await supabase
             .from('bot_rules')
-            .select('*')
+            .select('*, edited_by_ai, last_ai_edit_at')
             .order('priority', { ascending: true });
 
         if (error) {
@@ -14,7 +14,30 @@ export async function GET() {
             return NextResponse.json({ rules: [] });
         }
 
-        return NextResponse.json({ rules: rules || [] });
+        // Check which rules were edited by ML AI (from ml_knowledge_changes)
+        const ruleIds = rules?.map((rule: any) => rule.id) || [];
+        let mlEditedIds: Set<string> = new Set();
+        
+        if (ruleIds.length > 0 && rules?.some((rule: any) => rule.edited_by_ai)) {
+            const { data: mlChanges } = await supabase
+                .from('ml_knowledge_changes')
+                .select('entity_id')
+                .eq('entity_type', 'rule')
+                .in('entity_id', ruleIds)
+                .eq('undone', false);
+            
+            if (mlChanges) {
+                mlEditedIds = new Set(mlChanges.map((change: any) => String(change.entity_id)));
+            }
+        }
+
+        // Add edited_by_ml_ai field to each rule
+        const rulesWithMlFlag = rules?.map((rule: any) => ({
+            ...rule,
+            edited_by_ml_ai: mlEditedIds.has(String(rule.id)),
+        })) || [];
+
+        return NextResponse.json({ rules: rulesWithMlFlag });
     } catch (error) {
         console.error('Error:', error);
         return NextResponse.json({ rules: [] });
@@ -24,20 +47,24 @@ export async function GET() {
 // POST - Create a new bot rule
 export async function POST(req: Request) {
     try {
-        const { rule, category, priority } = await req.json();
+        const { rule, category, priority, edited_by_ai, last_ai_edit_at } = await req.json();
 
         if (!rule) {
             return NextResponse.json({ error: 'Rule text is required' }, { status: 400 });
         }
 
+        const insertData: any = {
+            rule,
+            category: category || 'general',
+            priority: priority || 0,
+            enabled: true,
+        };
+        if (edited_by_ai !== undefined) insertData.edited_by_ai = edited_by_ai;
+        if (last_ai_edit_at !== undefined) insertData.last_ai_edit_at = last_ai_edit_at;
+
         const { data, error } = await supabase
             .from('bot_rules')
-            .insert({
-                rule,
-                category: category || 'general',
-                priority: priority || 0,
-                enabled: true,
-            })
+            .insert(insertData)
             .select()
             .single();
 
@@ -83,7 +110,8 @@ export async function DELETE(req: Request) {
 // PATCH - Update a bot rule
 export async function PATCH(req: Request) {
     try {
-        const { id, rule, category, priority, enabled } = await req.json();
+        const body = await req.json();
+        const { id, rule, category, priority, enabled, edited_by_ai, last_ai_edit_at } = body;
 
         if (!id) {
             return NextResponse.json({ error: 'Rule ID is required' }, { status: 400 });
@@ -94,6 +122,9 @@ export async function PATCH(req: Request) {
         if (category !== undefined) updates.category = category;
         if (priority !== undefined) updates.priority = priority;
         if (enabled !== undefined) updates.enabled = enabled;
+        // Handle AI edit tracking
+        if (edited_by_ai !== undefined) updates.edited_by_ai = edited_by_ai;
+        if (last_ai_edit_at !== undefined) updates.last_ai_edit_at = last_ai_edit_at;
 
         const { data, error } = await supabase
             .from('bot_rules')

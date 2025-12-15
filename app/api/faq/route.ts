@@ -11,7 +11,7 @@ export async function GET() {
             .select('id')
             .eq('type', 'qa');
 
-        const qaCategoryIds = qaCategories?.map(c => c.id) || [];
+        const qaCategoryIds = qaCategories?.map((c: any) => c.id) || [];
 
         if (qaCategoryIds.length === 0) {
             return NextResponse.json([]);
@@ -30,7 +30,7 @@ export async function GET() {
         }
 
         // Parse Q&A format from content
-        const faqs = data?.map(doc => {
+        const faqs = data?.map((doc: any) => {
             const content = doc.content || '';
             // Use [\s\S] instead of 's' flag for compatibility
             const qMatch = content.match(/Q:\s*([\s\S]+?)(?:\nA:|$)/);

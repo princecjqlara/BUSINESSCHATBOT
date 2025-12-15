@@ -4,28 +4,58 @@ import { supabase } from '@/app/lib/supabase';
 // GET - Fetch all folders
 export async function GET() {
     try {
+        console.log('[Folders API] Fetching folders...');
+        
         const { data, error } = await supabase
             .from('document_folders')
             .select('id, name, created_at, category_id')
             .order('created_at', { ascending: true });
 
         if (error) {
-            console.error('Error fetching folders:', error);
-            return NextResponse.json({ error: error.message }, { status: 500 });
+            console.error('[Folders API] Supabase error:', {
+                message: error.message,
+                code: error.code,
+                details: error.details,
+                hint: error.hint
+            });
+            
+            // If table doesn't exist, return empty array instead of error
+            if (error.message?.includes('relation "document_folders" does not exist') || 
+                error.code === '42P01' ||
+                error.message?.includes('does not exist')) {
+                console.warn('[Folders API] document_folders table does not exist, returning empty array');
+                return NextResponse.json([]);
+            }
+            
+            // For other errors, still return empty array to prevent UI breakage
+            // but log the error for debugging
+            console.warn('[Folders API] Database error occurred, returning empty array to prevent UI breakage');
+            return NextResponse.json([]);
+        }
+
+        // Handle null/undefined data
+        if (!data) {
+            console.warn('[Folders API] No data returned, returning empty array');
+            return NextResponse.json([]);
         }
 
         // Map to the format expected by the frontend
         const folders = data.map((folder: any) => ({
             id: folder.id,
             name: folder.name,
-            categoryId: folder.category_id,
+            categoryId: folder.category_id || null,
             isOpen: true,
         }));
 
+        console.log(`[Folders API] Successfully fetched ${folders.length} folder(s)`);
         return NextResponse.json(folders);
     } catch (error) {
-        console.error('Error:', error);
-        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+        console.error('[Folders API] Unexpected error:', {
+            error: error instanceof Error ? error.message : String(error),
+            stack: error instanceof Error ? error.stack : undefined
+        });
+        // Return empty array on unexpected errors to prevent UI breakage
+        return NextResponse.json([], { status: 200 });
     }
 }
 

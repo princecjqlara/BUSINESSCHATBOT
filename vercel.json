@@ -3,6 +3,10 @@
         {
             "path": "/api/cron/execute-workflows",
             "schedule": "* * * * *"
+        },
+        {
+            "path": "/api/cron/process-scheduled-messages",
+            "schedule": "* * * * *"
         }
     ]
 }

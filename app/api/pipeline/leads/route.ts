@@ -28,9 +28,11 @@ export async function GET() {
         }
 
         // Group leads by stage
-        const stagesWithLeads = stages?.map(stage => ({
+        interface Stage { id: string;[key: string]: unknown; }
+        interface Lead { current_stage_id: string | null;[key: string]: unknown; }
+        const stagesWithLeads = stages?.map((stage: Stage) => ({
             ...stage,
-            leads: leads?.filter(lead => lead.current_stage_id === stage.id) || [],
+            leads: leads?.filter((lead: Lead) => lead.current_stage_id === stage.id) || [],
         })) || [];
 
         return NextResponse.json({ stages: stagesWithLeads });

@@ -259,12 +259,14 @@ export async function analyzeAndUpdateStage(lead: Lead, senderId: string): Promi
         }
 
         // Build conversation summary
+        interface ConversationMessage { role: string; content: string; }
         const conversationSummary = messages
-            .map(m => `${m.role === 'user' ? 'Customer' : 'Bot'}: ${m.content}`)
+            .map((m: ConversationMessage) => `${m.role === 'user' ? 'Customer' : 'Bot'}: ${m.content}`)
             .join('\n');
 
         // Build stages list for prompt
-        const stagesList = stages.map(s => `- ${s.name}: ${s.description || 'No description'}`).join('\n');
+        interface StageInfo { name: string; description?: string; }
+        const stagesList = stages.map((s: StageInfo) => `- ${s.name}: ${s.description || 'No description'}`).join('\n');
 
         // Call LLM to classify
         const prompt = `You are a sales pipeline classifier. Based on the conversation below, determine which pipeline stage this lead should be in.
@@ -309,7 +311,8 @@ Choose the most appropriate stage based on the customer's intent, interest level
         }
 
         // Find the matching stage
-        const matchedStage = stages.find(s =>
+        interface StageMatch { id: string; name: string; }
+        const matchedStage = stages.find((s: StageMatch) =>
             s.name.toLowerCase() === classification.stage.toLowerCase()
         );
 

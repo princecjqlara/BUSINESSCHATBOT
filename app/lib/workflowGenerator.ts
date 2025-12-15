@@ -226,9 +226,9 @@ ${rules.map((r, i) => `${i + 1}. ${r}`).join('\n')}`;
     }
 
     // Add knowledge base context
-    if (knowledgeContext && knowledgeContext.trim().length > 0) {
+    if (knowledgeContext && knowledgeContext.content && knowledgeContext.content.trim().length > 0) {
         systemPrompt += `\n\nBUSINESS CONTEXT (use this information in messages):
-${knowledgeContext.substring(0, 2000)}`;
+${knowledgeContext.content.substring(0, 2000)}`;
     }
 
     systemPrompt += `\n\nMESSAGE STYLE GUIDELINES:

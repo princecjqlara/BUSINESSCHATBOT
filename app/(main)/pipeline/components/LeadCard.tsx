@@ -19,6 +19,7 @@ interface LeadCardProps {
     index: number;
     onMoveClick: (leadId: string) => void;
     moveMenuOpen: boolean;
+    onCardClick?: (leadId: string) => void;
 }
 
 function formatTimeAgo(dateString: string | null): string {
@@ -46,7 +47,7 @@ function stringToColor(str: string) {
     return '#' + '00000'.substring(0, 6 - c.length) + c;
 }
 
-export default function LeadCard({ lead, index, onMoveClick, moveMenuOpen }: LeadCardProps) {
+export default function LeadCard({ lead, index, onMoveClick, moveMenuOpen, onCardClick }: LeadCardProps) {
     // Extract potential tags from AI classification or use defaults
     const getTags = () => {
         const tags = [];
@@ -68,7 +69,14 @@ export default function LeadCard({ lead, index, onMoveClick, moveMenuOpen }: Lea
                 <div
                     ref={provided.innerRef}
                     {...provided.draggableProps}
-                    className={`bg-white rounded-xl p-4 transition-all group relative border ${snapshot.isDragging
+                    onClick={(e) => {
+                        // Don't open modal if clicking on the move button or drag handle
+                        if ((e.target as HTMLElement).closest('button') || (e.target as HTMLElement).closest('[data-drag-handle]')) {
+                            return;
+                        }
+                        onCardClick?.(lead.id);
+                    }}
+                    className={`bg-white rounded-xl p-4 transition-all group relative border cursor-pointer ${snapshot.isDragging
                         ? 'shadow-xl border-blue-400 rotate-2 z-50'
                         : 'border-gray-100 hover:border-gray-200 shadow-sm hover:shadow-md'
                         }`}
@@ -79,6 +87,7 @@ export default function LeadCard({ lead, index, onMoveClick, moveMenuOpen }: Lea
                             {/* Drag Handle (visible on hover) */}
                             <div
                                 {...provided.dragHandleProps}
+                                data-drag-handle
                                 className="opacity-0 group-hover:opacity-100 absolute left-2 top-1/2 -translate-y-1/2 -ml-2 text-gray-300 hover:text-gray-500 cursor-grab active:cursor-grabbing p-1"
                             >
                                 <GripVertical size={14} />

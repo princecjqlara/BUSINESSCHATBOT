@@ -41,6 +41,7 @@ CREATE INDEX IF NOT EXISTS documents_embedding_idx ON documents
 ALTER TABLE documents ENABLE ROW LEVEL SECURITY;
 
 -- Policy for documents
+DROP POLICY IF EXISTS "Allow all operations on documents" ON documents;
 CREATE POLICY "Allow all operations on documents" ON documents
   FOR ALL USING (true) WITH CHECK (true);
 
@@ -698,3 +699,42 @@ CREATE INDEX IF NOT EXISTS idx_properties_status ON properties(status);
 CREATE INDEX IF NOT EXISTS idx_properties_price ON properties(price);
 CREATE INDEX IF NOT EXISTS idx_properties_active ON properties(is_active) WHERE is_active = true;
 CREATE INDEX IF NOT EXISTS idx_properties_type ON properties(property_type);
+
+-- ============================================================================
+-- PATCH: Ensure bot_goals supports optional goals (safe to re-run)
+-- ============================================================================
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'bot_goals') THEN
+    ALTER TABLE bot_goals 
+    ADD COLUMN IF NOT EXISTS is_optional BOOLEAN DEFAULT false;
+
+    COMMENT ON COLUMN bot_goals.is_optional IS 'Whether this goal is optional (true) or required/mandatory (false). Optional goals are pursued but not strictly required, while required goals must be achieved.';
+  END IF;
+END $$;
+
+-- ============================================================================
+-- PATCH: Ensure conversation_flow column exists on bot_settings (safe to re-run)
+-- ============================================================================
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'bot_settings') THEN
+    ALTER TABLE bot_settings 
+    ADD COLUMN IF NOT EXISTS conversation_flow TEXT;
+
+    COMMENT ON COLUMN bot_settings.conversation_flow IS 'User-defined conversation flow description or structure for the bot';
+  END IF;
+END $$;
+
+-- ============================================================================
+-- PATCH: Ensure documents support media URLs (safe to re-run)
+-- ============================================================================
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'documents') THEN
+    ALTER TABLE documents 
+    ADD COLUMN IF NOT EXISTS media_urls JSONB DEFAULT '[]'::jsonb;
+
+    COMMENT ON COLUMN documents.media_urls IS 'Array of media URLs (images, videos, files) associated with this document. Format: ["url1", "url2", ...]';
+  END IF;
+END $$;

@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 import { sendMessengerMessage, disableBotForLead } from './messengerService';
 import { getBotResponse } from './chatService';
+import { scheduleFollowUpMessage } from './scheduledMessageService';
 
 interface WorkflowNode {
     id: string;
@@ -103,14 +104,15 @@ export async function executeWorkflow(
 
     console.log('Execution record created:', execution.id);
 
-    // Start executing from trigger
-    await continueExecution(execution.id, workflowData, { leadId, senderId });
+    // Start executing from trigger (pass workflowId for scheduled messages)
+    await continueExecution(execution.id, workflowData, { leadId, senderId }, workflowId);
 }
 
 export async function continueExecution(
     executionId: string,
     workflowData: WorkflowData,
-    context: ExecutionContext
+    context: ExecutionContext,
+    workflowId?: string
 ): Promise<void> {
     console.log('continueExecution called for:', executionId);
 
@@ -146,8 +148,11 @@ export async function continueExecution(
     console.log(`Executing node ${currentNode.id} (${currentNode.data.type})`);
     console.log('Node data:', JSON.stringify(currentNode.data, null, 2));
 
+    // Get workflow ID from execution
+    const currentWorkflowId = execution.workflow_id;
+
     // Execute the node
-    const nextNodeId = await executeNode(currentNode, workflowData, context, executionId);
+    const nextNodeId = await executeNode(currentNode, workflowData, context, executionId, currentWorkflowId);
     console.log('Next node ID:', nextNodeId);
 
     if (nextNodeId === 'WAIT') {
@@ -180,15 +185,16 @@ export async function continueExecution(
         .update({ current_node_id: nextNodeId })
         .eq('id', executionId);
 
-    // Continue execution
-    await continueExecution(executionId, workflowData, context);
+    // Continue execution (pass workflowId)
+    await continueExecution(executionId, workflowData, context, execution.workflow_id);
 }
 
 async function executeNode(
     node: WorkflowNode,
     workflowData: WorkflowData,
     context: ExecutionContext,
-    executionId: string
+    executionId: string,
+    workflowId?: string
 ): Promise<string | null | 'WAIT' | 'STOP'> {
     switch (node.data.type) {
         case 'trigger':
@@ -210,8 +216,9 @@ async function executeNode(
                         .order('created_at', { ascending: true })
                         .limit(10);
 
+                    interface Message { role: string; content: string; }
                     const conversationContext = messages
-                        ?.map(m => `${m.role === 'user' ? 'Customer' : 'Bot'}: ${m.content}`)
+                        ?.map((m: Message) => `${m.role === 'user' ? 'Customer' : 'Bot'}: ${m.content}`)
                         .join('\n') || '';
 
                     const aiPrompt = `Generate a message for this customer based on the following instruction:
@@ -223,17 +230,38 @@ ${conversationContext}
 
 Respond with ONLY the message text to send, nothing else. Keep it natural and conversational in Taglish if appropriate.`;
 
-                    messageText = await getBotResponse(aiPrompt, context.senderId);
+                    const aiResponse = await getBotResponse(aiPrompt, context.senderId);
+                    // For workflow, use first message or join all messages
+                    messageText = Array.isArray(aiResponse) ? aiResponse.join(' ') : aiResponse;
                 } catch (error) {
                     console.error('Error generating AI message:', error);
                     // Fallback to the prompt itself if AI fails
                 }
             }
 
-            await sendMessengerMessage(
+            // Use best time contact scheduling if enabled, otherwise send immediately
+            // Get page ID from execution data if available
+            const { data: execData } = await supabase
+                .from('workflow_executions')
+                .select('execution_data')
+                .eq('id', executionId)
+                .single();
+
+            const executionData = (execData?.execution_data as Record<string, unknown>) || {};
+            const pageId = executionData.pageId as string | undefined;
+
+            // Schedule or send based on best time contact setting
+            await scheduleFollowUpMessage(
+                context.leadId,
                 context.senderId,
                 messageText,
-                { messagingType: 'MESSAGE_TAG', tag: 'ACCOUNT_UPDATE' }
+                pageId,
+                {
+                    messagingType: 'MESSAGE_TAG',
+                    tag: 'ACCOUNT_UPDATE',
+                    workflowId: workflowId || '',
+                    nodeId: node.id,
+                }
             );
             return getNextNode(node.id, workflowData);
 
@@ -345,7 +373,17 @@ Context:
 Respond with ONLY "true" or "false" based on whether the condition is met.`;
 
             const response = await getBotResponse(prompt, context.senderId);
-            return response.toLowerCase().includes('true');
+            // Handle different response types
+            let responseText = '';
+            if (typeof response === 'string') {
+                responseText = response;
+            } else if (Array.isArray(response)) {
+                responseText = response.join(' ');
+            } else if (response && typeof response === 'object' && 'messages' in response) {
+                const messages = response.messages;
+                responseText = Array.isArray(messages) ? messages.join(' ') : messages;
+            }
+            return responseText.toLowerCase().includes('true');
         } catch (error) {
             console.error('Error evaluating AI condition:', error);
             return false;
@@ -374,7 +412,7 @@ export async function triggerWorkflowsForStage(stageId: string, leadId: string):
         return;
     }
 
-    console.log(`Found ${workflows.length} workflows to trigger:`, workflows.map(w => w.name));
+    console.log(`Found ${workflows.length} workflows to trigger:`, workflows.map((w: { name: string }) => w.name));
 
     const { data: lead, error: leadError } = await supabase
         .from('leads')

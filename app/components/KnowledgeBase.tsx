@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Search, Plus, FileText, MoreHorizontal, Folder, FolderPlus, ChevronRight, ChevronDown, Move, Trash2, X, CheckSquare, Square, Tag, HelpCircle, Edit2, CreditCard } from 'lucide-react';
+import { Search, Plus, FileText, MoreHorizontal, Folder, FolderPlus, ChevronRight, ChevronDown, Move, Trash2, X, CheckSquare, Square, Tag, HelpCircle, Edit2, CreditCard, Bot, Sparkles, Loader2 } from 'lucide-react';
 import CategoryModal from './CategoryModal';
 
 interface Category {
@@ -14,9 +14,15 @@ interface Category {
 interface KnowledgeItem {
   id: string;
   text: string;
+  name?: string;
   createdAt: string;
   folderId?: string;
   categoryId?: string;
+  documentId?: string;
+  editedByAi?: boolean;
+  editedByMlAi?: boolean; // True if edited by ML AI (different from regular AI)
+  lastAiEditAt?: string | null;
+  mediaUrls?: string[];
 }
 
 interface FolderItem {
@@ -27,9 +33,10 @@ interface FolderItem {
 }
 
 interface KnowledgeBaseProps {
-  onSelect: (text: string) => void;
+  onSelect: (text: string, name?: string, id?: string, mediaUrls?: string[], documentId?: string) => void;
   onCategorySelect?: (category: Category | null) => void;
   onCreateDocument: () => void;
+  highlightedDocumentIds?: string[]; // Document IDs to temporarily highlight
 }
 
 const COLORS = [
@@ -41,7 +48,7 @@ const COLORS = [
   { name: 'pink', text: 'text-pink-600', bg: 'bg-pink-100' },
 ];
 
-export default function KnowledgeBase({ onSelect, onCategorySelect, onCreateDocument }: KnowledgeBaseProps) {
+export default function KnowledgeBase({ onSelect, onCategorySelect, onCreateDocument, highlightedDocumentIds = [] }: KnowledgeBaseProps) {
   const [categories, setCategories] = useState<Category[]>([]);
   const [knowledge, setKnowledge] = useState<KnowledgeItem[]>([]);
   const [folders, setFolders] = useState<FolderItem[]>([]);
@@ -56,6 +63,9 @@ export default function KnowledgeBase({ onSelect, onCategorySelect, onCreateDocu
   const [selectedDocs, setSelectedDocs] = useState<Set<string>>(new Set());
   const [bulkMode, setBulkMode] = useState(false);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+  const [reanalyzing, setReanalyzing] = useState(false);
+  const [showReanalyzeModal, setShowReanalyzeModal] = useState(false);
+  const [reanalyzeInstructions, setReanalyzeInstructions] = useState('');
 
   const contextMenuRef = useRef<HTMLDivElement>(null);
 
@@ -81,18 +91,130 @@ export default function KnowledgeBase({ onSelect, onCategorySelect, onCreateDocu
 
   const fetchKnowledge = async () => {
     try {
+      console.log('[fetchKnowledge] Starting API call');
       const res = await fetch('/api/knowledge');
+      console.log('[fetchKnowledge] Response received:', { status: res.status, ok: res.ok, statusText: res.statusText, headers: Object.fromEntries(res.headers.entries()) });
+      
+      if (!res.ok) {
+        // Try to get error message from response
+        let errorData = {};
+        try {
+          const text = await res.text();
+          errorData = text ? JSON.parse(text) : {};
+        } catch (parseError) {
+          // Ignore parse errors
+        }
+        console.error('[fetchKnowledge] Failed to fetch knowledge:', { status: res.status, statusText: res.statusText, error: errorData });
+        console.error('[fetchKnowledge] Full error details:', JSON.stringify({ status: res.status, statusText: res.statusText, error: errorData }, null, 2));
+        // Don't clear existing knowledge on error - preserve user's data
+        return;
+      }
+      
       const data = await res.json();
-      setKnowledge(data);
-    } catch (error) { console.error('Failed to fetch knowledge', error); }
+      
+      if (Array.isArray(data)) {
+        setKnowledge(data);
+      } else {
+        console.error('API returned non-array data:', data);
+        // Preserve existing knowledge state instead of clearing it
+        // Only set to empty array if knowledge is currently not an array (to fix the filter error)
+        setKnowledge(prev => Array.isArray(prev) ? prev : []);
+      }
+    } catch (error) { 
+      console.error('[fetchKnowledge] Exception caught:', error);
+      console.error('Failed to fetch knowledge', error); 
+      // Preserve existing knowledge on exception
+    }
+  };
+
+  const handleReanalyzeAll = async () => {
+    // Show modal to get optional instructions
+    setShowReanalyzeModal(true);
+  };
+
+  const confirmReanalyze = async () => {
+    setShowReanalyzeModal(false);
+    
+    setReanalyzing(true);
+    try {
+      const res = await fetch('/api/knowledge/reanalyze', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          instructions: reanalyzeInstructions.trim() || undefined,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        alert(`✅ Reanalysis complete!\n\n- Processed: ${data.processed} documents\n- Updated: ${data.updated} documents${data.errors > 0 ? `\n- Errors: ${data.errors}` : ''}`);
+        // Refresh knowledge base to show updated documents
+        await fetchKnowledge();
+        // Clear instructions for next time
+        setReanalyzeInstructions('');
+      } else {
+        alert(`Error: ${data.error || 'Failed to reanalyze documents'}`);
+      }
+    } catch (error) {
+      console.error('Failed to reanalyze documents:', error);
+      alert('Failed to reanalyze documents. Please try again.');
+    } finally {
+      setReanalyzing(false);
+    }
   };
 
   const fetchFolders = async () => {
     try {
       const res = await fetch('/api/folders');
-      const data = await res.json();
-      if (Array.isArray(data)) setFolders(data);
-    } catch (error) { console.error('Failed to fetch folders', error); }
+      if (!res.ok) {
+        // If error, try to get error message, but don't break
+        let errorMessage = `HTTP ${res.status}`;
+        try {
+          const errorText = await res.text();
+          if (errorText) {
+            try {
+              const errorData = JSON.parse(errorText);
+              errorMessage = errorData.error || errorData.message || errorMessage;
+            } catch {
+              // If not JSON, use the text as error message
+              errorMessage = errorText.substring(0, 100);
+            }
+          }
+        } catch (parseError) {
+          // If we can't parse the error, just use the status
+          console.warn('[KnowledgeBase] Could not parse error response:', parseError);
+        }
+        
+        console.error('[KnowledgeBase] Failed to fetch folders:', {
+          status: res.status,
+          statusText: res.statusText,
+          error: errorMessage
+        });
+        setFolders([]); // Set empty array to prevent UI issues
+        return;
+      }
+      
+      const data = await res.json().catch((parseError) => {
+        console.error('[KnowledgeBase] Failed to parse folders response:', parseError);
+        return [];
+      });
+      
+      if (Array.isArray(data)) {
+        setFolders(data);
+      } else {
+        console.warn('[KnowledgeBase] Folders API returned non-array data:', data);
+        setFolders([]);
+      }
+    } catch (error) { 
+      console.error('[KnowledgeBase] Failed to fetch folders:', {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      });
+      setFolders([]); // Set empty array on error to prevent UI breakage
+    }
   };
 
   useEffect(() => {
@@ -141,13 +263,40 @@ export default function KnowledgeBase({ onSelect, onCategorySelect, onCreateDocu
       const endpoint = type === 'doc' ? '/api/knowledge' : type === 'folder' ? '/api/folders' : '/api/categories';
       await fetch(`${endpoint}?id=${id}`, { method: 'DELETE' });
 
-      if (type === 'doc') setKnowledge(prev => prev.filter(k => k.id !== id));
+      if (type === 'doc') setKnowledge(prev => Array.isArray(prev) ? prev.filter(k => k.id !== id) : []);
       if (type === 'folder') setFolders(prev => prev.filter(f => f.id !== id));
       if (type === 'category') setCategories(prev => prev.filter(c => c.id !== id));
 
       setContextMenu(null);
     } catch (error) {
       console.error(`Failed to delete ${type}:`, error);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedDocs.size === 0) return;
+    
+    const count = selectedDocs.size;
+    if (!confirm(`Delete ${count} document${count !== 1 ? 's' : ''}? This action cannot be undone.`)) return;
+
+    try {
+      const idsArray = Array.from(selectedDocs);
+      const idsParam = idsArray.join(',');
+      
+      const response = await fetch(`/api/knowledge?ids=${idsParam}`, { method: 'DELETE' });
+      const data = await response.json();
+
+      if (data.success) {
+        // Remove deleted documents from state
+        setKnowledge(prev => Array.isArray(prev) ? prev.filter(k => !selectedDocs.has(k.id)) : []);
+        setSelectedDocs(new Set());
+        setBulkMode(false);
+      } else {
+        alert(`Failed to delete documents: ${data.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Failed to bulk delete documents:', error);
+      alert('Failed to delete documents. Please try again.');
     }
   };
 
@@ -158,9 +307,9 @@ export default function KnowledgeBase({ onSelect, onCategorySelect, onCreateDocu
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: docId, ...target }),
       });
-      setKnowledge(prev => prev.map(k =>
+      setKnowledge(prev => Array.isArray(prev) ? prev.map(k =>
         k.id === docId ? { ...k, folderId: target.folderId || undefined, categoryId: target.categoryId || undefined } : k
-      ));
+      ) : []);
     } catch (error) {
       console.error('Failed to move document:', error);
     }
@@ -169,24 +318,40 @@ export default function KnowledgeBase({ onSelect, onCategorySelect, onCreateDocu
   };
 
   const bulkMoveTo = async (target: { folderId?: string | null, categoryId?: string | null }) => {
+    if (selectedDocs.size === 0) return;
+    
     try {
-      await Promise.all(
-        Array.from(selectedDocs).map(id =>
-          fetch('/api/knowledge', {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id, ...target }),
-          })
-        )
+      const movePromises = Array.from(selectedDocs).map(id =>
+        fetch('/api/knowledge', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id, ...target }),
+        })
       );
-      setKnowledge(prev => prev.map(k =>
+      
+      const results = await Promise.all(movePromises);
+      const errors = results.filter(res => !res.ok);
+      
+      if (errors.length > 0) {
+        console.error('Some documents failed to move:', errors);
+        alert(`Failed to move ${errors.length} of ${selectedDocs.size} documents. Please try again.`);
+        return;
+      }
+      
+      // Update local state
+      setKnowledge(prev => Array.isArray(prev) ? prev.map(k =>
         selectedDocs.has(k.id) ? { ...k, folderId: target.folderId || undefined, categoryId: target.categoryId || undefined } : k
-      ));
+      ) : []);
+      
+      // Clear selection and exit bulk mode
+      setSelectedDocs(new Set());
+      setBulkMode(false);
+      
+      console.log(`[Bulk Move] Successfully moved ${selectedDocs.size} document(s)`);
     } catch (error) {
       console.error('Failed to bulk move:', error);
+      alert('Failed to move documents. Please try again.');
     }
-    setSelectedDocs(new Set());
-    setBulkMode(false);
   };
 
   const handleMoveSelectChange = (value: string) => {
@@ -245,25 +410,41 @@ export default function KnowledgeBase({ onSelect, onCategorySelect, onCreateDocu
   const renderDocItem = (item: KnowledgeItem, inFolder = false) => (
     <div
       key={item.id}
-      onClick={() => bulkMode ? toggleDocSelection(item.id) : onSelect(item.text)}
+      onClick={() => bulkMode ? toggleDocSelection(item.id) : onSelect(item.text, item.name, item.id, item.mediaUrls, item.documentId)}
       onContextMenu={(e) => handleContextMenu(e, 'doc', item.id)}
-      className={`group flex items-center justify-between px-3 py-1.5 ml-2 hover:bg-gray-100 rounded cursor-pointer ${selectedDocs.has(item.id) ? 'bg-teal-50 text-teal-700' : 'text-gray-600'
-        }`}
+      className={`group flex items-center justify-between px-3 py-1.5 ml-2 hover:bg-gray-100 rounded cursor-pointer transition-all duration-300 ${
+        highlightedDocumentIds.includes(String(item.id)) 
+          ? 'bg-yellow-100 border-l-4 border-yellow-500 shadow-md' : // Temporarily highlighted - yellow
+        selectedDocs.has(item.id) ? 'bg-teal-50 text-teal-700' : 
+        item.editedByMlAi ? 'bg-blue-50/50 border-l-2 border-blue-500' : // ML AI edits - blue
+        item.editedByAi ? 'bg-purple-50/50 border-l-2 border-purple-400' : // Regular AI edits - purple
+        'text-gray-800'
+      }`}
     >
-      <div className="flex items-center gap-2 overflow-hidden">
+      <div className="flex items-center gap-2 overflow-hidden flex-1">
         {bulkMode && (
           <div onClick={(e) => { e.stopPropagation(); toggleDocSelection(item.id); }}>
             {selectedDocs.has(item.id) ? <CheckSquare size={14} className="text-teal-600" /> : <Square size={14} className="text-gray-300" />}
           </div>
         )}
-        <FileText size={14} className="flex-shrink-0 opacity-70" />
-        <span className="text-sm truncate">{item.text.substring(0, 25)}{item.text.length > 25 ? '...' : ''}</span>
+        {item.editedByMlAi && (
+          <div title="Edited by ML AI">
+            <Bot size={12} className="flex-shrink-0 text-blue-600" />
+          </div>
+        )}
+        {item.editedByAi && !item.editedByMlAi && (
+          <div title="Edited by AI">
+            <Bot size={12} className="flex-shrink-0 text-purple-600" />
+          </div>
+        )}
+        <FileText size={14} className="flex-shrink-0 text-gray-600" />
+        <span className="text-sm font-medium text-gray-900 truncate">{item.name || item.text.substring(0, 25)}{!item.name && item.text.length > 25 ? '...' : ''}</span>
       </div>
     </div>
   );
 
   const renderFolder = (folder: FolderItem) => {
-    const docsInFolder = knowledge.filter(k => k.folderId === folder.id);
+    const docsInFolder = Array.isArray(knowledge) ? knowledge.filter(k => k.folderId === folder.id) : [];
     return (
       <div key={folder.id} className="ml-2">
         <div
@@ -316,40 +497,140 @@ export default function KnowledgeBase({ onSelect, onCategorySelect, onCreateDocu
         >
           <Plus size={16} />
         </button>
-
+        <button
+          onClick={handleReanalyzeAll}
+          disabled={reanalyzing}
+          className="p-1.5 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+          title="Reanalyze and fix all documents with AI"
+        >
+          {reanalyzing ? (
+            <Loader2 size={16} className="animate-spin" />
+          ) : (
+            <Sparkles size={16} />
+          )}
+        </button>
       </div>
+
+      {/* Reanalyze Instructions Modal */}
+      {showReanalyzeModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-gray-900">Reanalyze Documents with AI</h3>
+              <button
+                onClick={() => {
+                  setShowReanalyzeModal(false);
+                  setReanalyzeInstructions('');
+                }}
+                className="text-gray-500 hover:text-gray-700 transition-colors p-1 hover:bg-gray-100 rounded"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="mb-4">
+              <label className="block text-sm font-semibold text-gray-900 mb-2">
+                Optional Instructions (How do you want your files organized?)
+              </label>
+              <textarea
+                value={reanalyzeInstructions}
+                onChange={(e) => setReanalyzeInstructions(e.target.value)}
+                placeholder="Example: Organize by product categories, use shorter names, group related content together, prioritize sales-focused language..."
+                className="w-full h-32 p-3 border-2 border-gray-400 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 resize-none text-sm text-gray-900 bg-white placeholder:text-gray-500 placeholder:opacity-70"
+              />
+              <p className="text-xs text-gray-700 mt-2 font-medium">
+                Leave empty for default organization, or provide specific instructions on how you want documents organized, named, and categorized.
+              </p>
+            </div>
+
+            <div className="flex gap-3 justify-end mt-auto">
+              <button
+                onClick={() => {
+                  setShowReanalyzeModal(false);
+                  setReanalyzeInstructions('');
+                }}
+                className="px-4 py-2 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
+                disabled={reanalyzing}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmReanalyze}
+                disabled={reanalyzing}
+                className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {reanalyzing ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  'Start Reanalysis'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Bulk Actions Bar */}
       {bulkMode && selectedDocs.size > 0 && (
-        <div className="p-2 bg-teal-50 border-b border-teal-100 flex items-center gap-2 animate-in slide-in-from-top-2">
-          <span className="text-xs text-teal-700 font-medium whitespace-nowrap">{selectedDocs.size} selected</span>
-          <div className="flex-1 min-w-0">
-            <select
-              onChange={(e) => handleMoveSelectChange(e.target.value)}
-              className="w-full text-xs border border-teal-200 rounded px-2 py-1 bg-white focus:outline-none focus:border-teal-400"
-              defaultValue=""
+        <div className="fixed bottom-4 left-4 right-4 md:left-auto md:right-auto md:w-96 bg-white border-2 border-teal-500 rounded-xl shadow-2xl p-4 z-50">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <CheckSquare className="text-teal-600" size={20} />
+              <span className="font-semibold text-gray-900">
+                {selectedDocs.size} document{selectedDocs.size !== 1 ? 's' : ''} selected
+              </span>
+            </div>
+            <button
+              onClick={() => {
+                setSelectedDocs(new Set());
+                setBulkMode(false);
+              }}
+              className="p-1 hover:bg-gray-100 rounded"
             >
-              <option value="" disabled>Move to...</option>
-              <option value="root">Unfiled</option>
-              <optgroup label="Categories">
-                {categories.map(c => <option key={c.id} value={`cat:${c.id}`}>{c.name}</option>)}
-              </optgroup>
-              <optgroup label="Folders">
-                {folders.map(f => <option key={f.id} value={`folder:${f.id}`}>{f.name}</option>)}
-              </optgroup>
-            </select>
+              <X size={16} className="text-gray-500" />
+            </button>
           </div>
-          <button
-            onClick={() => {
-              Array.from(selectedDocs).forEach(id => deleteItem('doc', id));
-              setSelectedDocs(new Set());
-              setBulkMode(false);
-            }}
-            className="p-1 text-red-600 hover:bg-red-100 rounded flex-shrink-0"
-            title="Delete selected"
-          >
-            <Trash2 size={14} />
-          </button>
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <select
+                onChange={(e) => {
+                  handleMoveSelectChange(e.target.value);
+                  // Reset select after move
+                  e.target.value = '';
+                }}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 text-gray-900"
+                defaultValue=""
+              >
+                <option value="" disabled>Move {selectedDocs.size} to...</option>
+                <option value="root">📁 Unfiled (No Category/Folder)</option>
+                {categories.length > 0 && (
+                  <optgroup label="Categories">
+                    {categories.map(c => (
+                      <option key={c.id} value={`cat:${c.id}`}>📂 {c.name}</option>
+                    ))}
+                  </optgroup>
+                )}
+                {folders.length > 0 && (
+                  <optgroup label="Folders">
+                    {folders.map(f => (
+                      <option key={f.id} value={`folder:${f.id}`}>📁 {f.name}</option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
+            </div>
+            <button
+              onClick={handleBulkDelete}
+              className="flex items-center justify-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium"
+              title={`Delete ${selectedDocs.size} selected document${selectedDocs.size !== 1 ? 's' : ''}`}
+            >
+              <Trash2 size={16} />
+              Delete
+            </button>
+          </div>
         </div>
       )}
 
@@ -357,7 +638,7 @@ export default function KnowledgeBase({ onSelect, onCategorySelect, onCreateDocu
         {/* Categories */}
         {categories.map(cat => {
           const catFolders = folders.filter(f => f.categoryId === cat.id);
-          const catDocs = knowledge.filter(k => k.categoryId === cat.id && !k.folderId);
+          const catDocs = Array.isArray(knowledge) ? knowledge.filter(k => k.categoryId === cat.id && !k.folderId) : [];
           const color = getColor(cat.color);
           const isExpanded = expandedCategories.has(cat.id);
 
@@ -458,7 +739,7 @@ export default function KnowledgeBase({ onSelect, onCategorySelect, onCreateDocu
           )}
 
           {folders.filter(f => !f.categoryId).map(renderFolder)}
-          {knowledge.filter(k => !k.categoryId && !k.folderId).map(doc => renderDocItem(doc))}
+          {Array.isArray(knowledge) ? knowledge.filter(k => !k.categoryId && !k.folderId).map(doc => renderDocItem(doc)) : null}
         </div>
 
         {/* Add Category Button */}

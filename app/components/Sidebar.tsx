@@ -10,7 +10,8 @@ import {
     Workflow,
     Store,
     ChevronLeft,
-    ChevronRight
+    ChevronRight,
+    BrainCircuit
 } from 'lucide-react';
 
 import Link from 'next/link';
@@ -28,6 +29,7 @@ export default function Sidebar() {
         { icon: Kanban, href: '/pipeline', label: 'Pipeline' },
         { icon: Store, href: '/store', label: 'Store' },
         { icon: Workflow, href: '/workflows', label: 'Workflows' },
+        { icon: BrainCircuit, href: '/ml-analytics', label: 'ML Analytics' },
         { icon: Settings, href: '/settings', label: 'Settings' },
     ];
 

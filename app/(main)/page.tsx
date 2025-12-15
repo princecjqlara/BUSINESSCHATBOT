@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import KnowledgeBase from "../components/KnowledgeBase";
 import ChatPreview from "../components/ChatPreview";
 import Header from "../components/Header";
@@ -20,29 +20,98 @@ interface Category {
 
 export default function Home() {
   const [selectedDocText, setSelectedDocText] = useState('');
+  const [selectedDocName, setSelectedDocName] = useState('');
+  const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
+  const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null); // metadata.documentId
+  const [selectedDocMediaUrls, setSelectedDocMediaUrls] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState<'documents' | 'rules'>('documents');
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
   const [isEditingDoc, setIsEditingDoc] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [previewDocumentContent, setPreviewDocumentContent] = useState<string | undefined>(undefined);
+  const [highlightedDocumentIds, setHighlightedDocumentIds] = useState<string[]>([]);
 
-  const handleSaveDocument = async (text: string, categoryId?: string) => {
+  const handleSaveDocument = useCallback(async (text: string, name: string, categoryId?: string, mediaUrls?: string[]) => {
     try {
-      await fetch('/api/knowledge', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, categoryId }),
-      });
-      window.location.reload();
+      if (selectedDocId) {
+        // Update existing document
+        const response = await fetch('/api/knowledge', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: selectedDocId, text, name, categoryId, mediaUrls, documentId: selectedDocumentId || undefined }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to update document');
+        }
+      } else {
+        // Create new document
+        const response = await fetch('/api/knowledge', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text, name, categoryId, mediaUrls }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || `Failed to create document: ${response.status} ${response.statusText}`);
+        }
+      }
+
+      // Refresh the knowledge base instead of reloading the page
+      setRefreshKey(prev => prev + 1);
+      setIsEditingDoc(false);
+      setSelectedDocText('');
+      setSelectedDocName('');
+      setSelectedDocId(null);
+      setSelectedDocumentId(null);
+      setSelectedDocMediaUrls([]);
     } catch (error) {
       console.error('Failed to save document:', error);
+      alert(`Failed to save document: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
-  };
+  }, [selectedDocId, selectedDocumentId]);
 
-  const handleCreateDocument = () => {
+  const handleCreateDocument = useCallback(() => {
     setSelectedDocText('');
+    setSelectedDocName('');
+    setSelectedDocId(null);
+    setSelectedDocumentId(null);
+    setSelectedDocMediaUrls([]);
     setSelectedCategory(null);
     setActiveTab('documents');
     setIsEditingDoc(true);
-  };
+  }, []);
+
+  const handleDocumentSelect = useCallback((text: string, name?: string, id?: string, mediaUrls?: string[], documentId?: string) => {
+    setSelectedDocText(text);
+    setSelectedDocName(name || '');
+    setSelectedDocId(id || null);
+    setSelectedDocumentId(documentId || null);
+    setSelectedDocMediaUrls(mediaUrls || []);
+    setIsEditingDoc(true);
+  }, []);
+
+  const handleCategorySelect = useCallback((category: Category | null) => {
+    setSelectedCategory(category);
+    setIsEditingDoc(false);
+  }, []);
+
+  const handleDocumentsEdited = useCallback((documentIds: string[]) => {
+    // Highlight the edited documents temporarily
+    setHighlightedDocumentIds(documentIds);
+    // Refresh knowledge base to show updated documents
+    setRefreshKey(prev => prev + 1);
+    // Clear highlight after 5 seconds
+    setTimeout(() => {
+      setHighlightedDocumentIds([]);
+    }, 5000);
+  }, []);
+
+  const handleDocumentSave = useCallback(async (text: string, name: string, mediaUrls?: string[]) => {
+    await handleSaveDocument(text, name, selectedCategory?.id, mediaUrls);
+  }, [handleSaveDocument, selectedCategory?.id]);
 
   // Determine which editor to show based on selected category
   const renderEditor = () => {
@@ -55,7 +124,10 @@ export default function Home() {
       return (
         <DocumentEditor
           initialText={selectedDocText}
-          onSave={(text) => handleSaveDocument(text, selectedCategory?.id)}
+          initialName={selectedDocName}
+          initialMediaUrls={selectedDocMediaUrls}
+          onSave={handleDocumentSave}
+          onPreviewContentChange={setPreviewDocumentContent}
         />
       );
     }
@@ -84,7 +156,10 @@ export default function Home() {
     return (
       <DocumentEditor
         initialText={selectedDocText}
-        onSave={(text) => handleSaveDocument(text, selectedCategory?.id)}
+        initialName={selectedDocName}
+        initialMediaUrls={selectedDocMediaUrls}
+        onSave={handleDocumentSave}
+        onPreviewContentChange={setPreviewDocumentContent}
       />
     );
   };
@@ -95,15 +170,11 @@ export default function Home() {
       <div className="flex-1 flex overflow-hidden">
         {/* Knowledge Base Sidebar */}
         <KnowledgeBase
-          onSelect={(text: string) => {
-            setSelectedDocText(text);
-            setIsEditingDoc(true);
-          }}
-          onCategorySelect={(category: Category | null) => {
-            setSelectedCategory(category);
-            setIsEditingDoc(false);
-          }}
+          key={refreshKey}
+          onSelect={handleDocumentSelect}
+          onCategorySelect={handleCategorySelect}
           onCreateDocument={handleCreateDocument}
+          highlightedDocumentIds={highlightedDocumentIds}
         />
 
         {/* Main Content Area with Tabs */}
@@ -150,7 +221,10 @@ export default function Home() {
           </div>
         </div>
 
-        <ChatPreview />
+        <ChatPreview
+          previewDocumentContent={previewDocumentContent}
+          onDocumentsEdited={handleDocumentsEdited}
+        />
       </div>
     </div>
   );

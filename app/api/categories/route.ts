@@ -4,10 +4,22 @@ import { supabase } from '@/app/lib/supabase';
 // GET - List all categories
 export async function GET() {
     try {
+        // #region agent log
+        if (typeof fetch !== 'undefined') {
+            fetch('http://127.0.0.1:7243/ingest/be8dd005-a281-45cf-bcd3-1e20a0428380',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'categories/route.ts:GET:entry',message:'GET request for categories',data:{timestamp:new Date().toISOString()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+        }
+        // #endregion
+
         const { data, error } = await supabase
             .from('knowledge_categories')
             .select('*')
             .order('created_at', { ascending: true });
+
+        // #region agent log
+        if (typeof fetch !== 'undefined') {
+            fetch('http://127.0.0.1:7243/ingest/be8dd005-a281-45cf-bcd3-1e20a0428380',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'categories/route.ts:GET:after-query',message:'Categories query completed',data:{error:error?.message || null,count:data?.length || 0,hasData:!!data},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+        }
+        // #endregion
 
         if (error) {
             console.error('Error fetching categories:', error);

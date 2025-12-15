@@ -23,6 +23,7 @@ interface Stage {
 interface ListViewProps {
     stages: Stage[];
     onMoveLead: (leadId: string, stageId: string) => void;
+    onCardClick?: (leadId: string) => void;
 }
 
 function formatTimeAgo(dateString: string | null): string {
@@ -50,7 +51,7 @@ function stringToColor(str: string) {
     return '#' + '00000'.substring(0, 6 - c.length) + c;
 }
 
-export default function ListView({ stages, onMoveLead }: ListViewProps) {
+export default function ListView({ stages, onMoveLead, onCardClick }: ListViewProps) {
     // Flatten leads to display in a single list, adding stage info to each lead
     const allLeads = stages.flatMap(stage =>
         stage.leads.map(lead => ({
@@ -83,7 +84,11 @@ export default function ListView({ stages, onMoveLead }: ListViewProps) {
                         </tr>
                     ) : (
                         allLeads.map((lead) => (
-                            <tr key={lead.id} className="hover:bg-gray-50/50 transition-colors group">
+                            <tr 
+                                key={lead.id} 
+                                className="hover:bg-gray-50/50 transition-colors group cursor-pointer"
+                                onClick={() => onCardClick?.(lead.id)}
+                            >
                                 <td className="px-6 py-4">
                                     <div className="flex items-center gap-3">
                                         <div
@@ -112,7 +117,7 @@ export default function ListView({ stages, onMoveLead }: ListViewProps) {
                                         <span className="text-xs text-gray-400">—</span>
                                     )}
                                 </td>
-                                <td className="px-6 py-4">
+                                <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
                                     <select
                                         className="bg-gray-100 text-gray-700 text-xs font-medium px-2 py-1 rounded border-none focus:ring-2 focus:ring-black/5 cursor-pointer outline-none"
                                         value={lead.stageId}

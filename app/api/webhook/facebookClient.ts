@@ -321,3 +321,70 @@ export async function callSendAPI(sender_psid: string, response: any, pageId?: s
         console.error('Unable to send message:', error);
     }
 }
+
+// Send media attachments (images, videos, files) via Facebook Messenger
+export async function sendMediaAttachments(sender_psid: string, mediaUrls: string[], pageId?: string): Promise<boolean> {
+    const PAGE_ACCESS_TOKEN = await getPageToken(pageId);
+
+    if (!PAGE_ACCESS_TOKEN || !mediaUrls || mediaUrls.length === 0) {
+        return false;
+    }
+
+    console.log(`[Media] Sending ${mediaUrls.length} media attachment(s) to ${sender_psid}`);
+
+    // Send each media URL as a separate attachment
+    for (const url of mediaUrls) {
+        try {
+            // Determine attachment type based on URL extension
+            let attachmentType = 'image'; // Default to image
+            const urlLower = url.toLowerCase();
+            if (urlLower.match(/\.(mp4|avi|mov|wmv|flv|webm)$/)) {
+                attachmentType = 'video';
+            } else if (urlLower.match(/\.(pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar)$/)) {
+                attachmentType = 'file';
+            }
+
+            const requestBody = {
+                messaging_type: 'RESPONSE',
+                recipient: { id: sender_psid },
+                message: {
+                    attachment: {
+                        type: attachmentType,
+                        payload: {
+                            url: url,
+                            is_reusable: true
+                        }
+                    }
+                }
+            };
+
+            console.log(`[Media] Sending ${attachmentType}: ${url.substring(0, 100)}...`);
+
+            const res = await fetch(
+                `https://graph.facebook.com/v21.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestBody),
+                }
+            );
+
+            const resData = await res.json();
+
+            if (!res.ok) {
+                console.error(`[Media] Failed to send ${attachmentType}:`, resData);
+                continue; // Try next media URL
+            }
+
+            console.log(`[Media] Successfully sent ${attachmentType}`);
+            
+            // Add a small delay between media attachments
+            await new Promise(resolve => setTimeout(resolve, 300));
+        } catch (error) {
+            console.error(`[Media] Error sending media attachment:`, error);
+            continue; // Try next media URL
+        }
+    }
+
+    return true;
+}

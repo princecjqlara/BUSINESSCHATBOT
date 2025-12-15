@@ -42,7 +42,7 @@ export async function POST(
                 console.error('[ApplyToExisting] Error fetching leads:', leadsError);
             } else if (leads && leads.length > 0) {
                 console.log(`[ApplyToExisting] Found ${leads.length} leads to trigger`);
-                console.log(`[ApplyToExisting] Lead details:`, leads.map(l => ({ id: l.id, sender_id: l.sender_id?.substring(0, 10) + '...' })));
+                console.log(`[ApplyToExisting] Lead details:`, leads.map((l: any) => ({ id: l.id, sender_id: l.sender_id?.substring(0, 10) + '...' })));
 
                 // Check which leads already have an execution for this workflow to avoid duplicates
                 const { data: existingExecutions } = await supabase
@@ -50,7 +50,7 @@ export async function POST(
                     .select('lead_id')
                     .eq('workflow_id', id);
 
-                const existingLeadIds = new Set(existingExecutions?.map(e => e.lead_id) || []);
+                const existingLeadIds = new Set(existingExecutions?.map((e: any) => e.lead_id) || []);
                 console.log(`[ApplyToExisting] ${existingLeadIds.size} leads already have executions, will skip those`);
 
                 // Trigger workflow for each lead that doesn't already have an execution

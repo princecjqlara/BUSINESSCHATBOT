@@ -26,7 +26,7 @@ export async function GET(req: Request) {
             success: !docsError,
             error: docsError?.message,
             count: allDocs?.length || 0,
-            samples: allDocs?.map(d => ({
+            samples: allDocs?.map((d: any) => ({
                 id: d.id,
                 preview: d.content?.substring(0, 100) + '...',
                 hasEmbedding: true, // If it's in the table, it should have embedding
@@ -44,7 +44,7 @@ export async function GET(req: Request) {
             success: !embError,
             error: embError?.message,
             count: docsWithEmbedding?.length || 0,
-            hasEmbeddings: docsWithEmbedding?.every(d => d.embedding && d.embedding.length > 0),
+            hasEmbeddings: docsWithEmbedding?.every((d: any) => d.embedding && d.embedding.length > 0),
             sampleEmbeddingLength: docsWithEmbedding?.[0]?.embedding?.length,
         };
 
@@ -75,8 +75,9 @@ export async function GET(req: Request) {
             results.ragSearch = {
                 success: true,
                 query,
-                resultLength: ragResult.length,
-                preview: ragResult.substring(0, 500) + (ragResult.length > 500 ? '...' : ''),
+                resultLength: ragResult.content.length,
+                preview: ragResult.content.substring(0, 500) + (ragResult.content.length > 500 ? '...' : ''),
+                mediaUrlsCount: ragResult.mediaUrls.length,
             };
         } catch (e: unknown) {
             results.ragSearch = {

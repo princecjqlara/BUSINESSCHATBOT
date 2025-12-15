@@ -1,6 +1,13 @@
 import OpenAI from 'openai';
 import { searchDocuments } from './rag';
 import { supabase } from './supabase';
+import { buildContext, selectStrategy, recordBehaviorAndLearn } from './mlOnlineLearning';
+import { processKnowledgeImprovements } from './mlKnowledgeManagement';
+import { detectConversionIntent, recordConversion } from './mlConversionTracking';
+import { limitSentences, splitIntoMessages } from './sentenceLimiter';
+import { formatMessage, formatMessages } from './messageFormatter';
+import { checkAndRecordGoalCompletions, getActiveBotGoals } from './goalTrackingService';
+import { analyzeMessage, getResponseGuidance, type NLPAnalysisResult } from './nlpService';
 
 const MAX_HISTORY = 10; // Reduced to prevent context overload
 
@@ -8,7 +15,7 @@ const MAX_HISTORY = 10; // Reduced to prevent context overload
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let cachedSettings: any = null;
 let settingsLastRead = 0;
-const SETTINGS_CACHE_MS = 60000; // 1 minute cache
+const SETTINGS_CACHE_MS = 10000; // 10 seconds cache (reduced for faster updates)
 
 // Fetch bot settings from database with caching
 async function getBotSettings() {
@@ -31,6 +38,7 @@ async function getBotSettings() {
 
         cachedSettings = data;
         settingsLastRead = now;
+        console.log(`[Settings Cache] Refreshed - max_sentences_per_message: ${data.max_sentences_per_message ?? 3}`);
         return data;
     } catch (error) {
         console.error('Error fetching bot settings:', error);
@@ -119,7 +127,14 @@ async function getPaymentMethods(): Promise<string> {
 
         // Format payment methods for the AI
         let formatted = 'AVAILABLE PAYMENT METHODS:\n';
-        data.forEach((pm, index) => {
+        interface PaymentMethod {
+            name: string;
+            account_name?: string;
+            account_number?: string;
+            instructions?: string;
+            qr_code_url?: string;
+        }
+        data.forEach((pm: PaymentMethod, index: number) => {
             formatted += `\n${index + 1}. ${pm.name}`;
             if (pm.account_name) formatted += `\n   Account Name: ${pm.account_name}`;
             if (pm.account_number) formatted += `\n   Account/Number: ${pm.account_number}`;
@@ -195,7 +210,7 @@ function storeMessageAsync(senderId: string, role: 'user' | 'assistant', content
                     await supabase
                         .from('conversations')
                         .delete()
-                        .in('id', oldMessages.map(m => m.id));
+                        .in('id', oldMessages.map((m: { id: string }) => m.id));
                 }
             }
         } catch (error) {
@@ -223,17 +238,51 @@ export interface ImageContext {
 export async function getBotResponse(
     userMessage: string,
     senderId: string = 'web_default',
-    imageContext?: ImageContext
-): Promise<string> {
+    imageContext?: ImageContext,
+    previewDocumentContent?: string // Optional preview document content (unapplied AI edits)
+): Promise<string | string[] | { messages: string | string[]; mediaUrls: string[] }> {
     const startTime = Date.now();
 
     // Read bot configuration from database (cached)
     const settings = await getBotSettings();
     const botName = settings.bot_name || 'Assistant';
     const botTone = settings.bot_tone || 'helpful and professional';
+    const enableMlChatbot = settings.enable_ml_chatbot ?? false;
+    const enableAiKnowledgeManagement = settings.enable_ai_knowledge_management ?? false;
+    const enableAiAutonomousFollowup = settings.enable_ai_autonomous_followup ?? false;
+    const maxSentencesPerMessage = settings.max_sentences_per_message ?? 3;
+    const conversationFlow = settings.conversation_flow || '';
 
     // Store user message immediately (fire and forget)
     storeMessageAsync(senderId, 'user', userMessage);
+
+    // ML Learning: Build context and select strategy if enabled
+    let selectedStrategy = null;
+    let mlContext = null;
+    if (enableMlChatbot) {
+        try {
+            mlContext = await buildContext(senderId);
+            selectedStrategy = await selectStrategy(mlContext, senderId);
+            console.log(`[ML] Selected strategy: ${selectedStrategy?.strategyName} for context: ${mlContext.conversationStage}`);
+        } catch (error) {
+            console.error('[ML] Error in strategy selection:', error);
+        }
+    }
+
+    // NLP Analysis: Analyze user message for intent, sentiment, and entities
+    let nlpAnalysis: NLPAnalysisResult | null = null;
+    try {
+        nlpAnalysis = analyzeMessage(userMessage);
+        console.log(`[NLP] Intent: ${nlpAnalysis.intent.intent} (${(nlpAnalysis.intent.confidence * 100).toFixed(1)}%), Sentiment: ${nlpAnalysis.sentiment.sentiment} (${nlpAnalysis.sentiment.emotionalTone || 'neutral'})`);
+
+        // Log extracted entities if any
+        const entityCount = Object.values(nlpAnalysis.entities).flat().length;
+        if (entityCount > 0) {
+            console.log(`[NLP] Extracted ${entityCount} entities:`, nlpAnalysis.entities);
+        }
+    } catch (error) {
+        console.error('[NLP] Error analyzing message:', error);
+    }
 
     // Check if this is a payment-related query
     const isPaymentRelated = isPaymentQuery(userMessage);
@@ -243,21 +292,87 @@ export async function getBotResponse(
     }
 
     // Run independent operations in PARALLEL
-    const [rules, history, context, instructions] = await Promise.all([
+    const [rules, history, contextResult, instructions, botGoals] = await Promise.all([
         getBotRules(),
         getConversationHistory(senderId),
-        searchDocuments(userMessage),
+        searchDocuments(userMessage, 5, previewDocumentContent), // Pass preview content
         getBotInstructions(),
+        getActiveBotGoals(),
     ]);
 
-    console.log(`Parallel fetch took ${Date.now() - startTime}ms - rules: ${rules.length}, history: ${history.length}, isPaymentQuery: ${isPaymentRelated}`);
+    const context = contextResult.content;
+    const mediaUrls = contextResult.mediaUrls || [];
+
+    console.log(`Parallel fetch took ${Date.now() - startTime}ms - rules: ${rules.length}, history: ${history.length}, goals: ${botGoals.length}, isPaymentQuery: ${isPaymentRelated}`);
     console.log('[RAG CONTEXT]:', context ? context.substring(0, 500) + '...' : 'NO CONTEXT RETRIEVED');
+    console.log('[RAG MEDIA]:', mediaUrls.length > 0 ? `${mediaUrls.length} media URL(s) found` : 'No media URLs');
+
+    // Detect if this is a follow-up message generation request
+    const isFollowUpGeneration = userMessage.toLowerCase().includes('generate a follow-up') ||
+        userMessage.toLowerCase().includes('follow-up message') ||
+        userMessage.toLowerCase().includes('followup');
 
     // Build a clear system prompt optimized for Llama 3.1
+    // IMPORTANT: Put rules FIRST for maximum visibility and compliance
     let systemPrompt = `You are ${botName}, a friendly Filipino salesperson. Your style: ${botTone}.
 
-STYLE: Use Taglish, keep messages short, use 1-2 emojis max.
+`;
 
+    // Add rules FIRST - before style and other instructions for maximum emphasis
+    if (rules.length > 0) {
+        systemPrompt += `═══════════════════════════════════════════════════════════
+⚠️ CRITICAL RULES - YOU MUST FOLLOW THESE IN EVERY RESPONSE ⚠️
+═══════════════════════════════════════════════════════════
+
+${rules.map((r, i) => `RULE ${i + 1}: ${r}`).join('\n\n')}
+
+═══════════════════════════════════════════════════════════
+
+🚨 MANDATORY COMPLIANCE REQUIREMENTS:
+- These rules are ABSOLUTELY MANDATORY - you MUST follow them in EVERY response
+- Do NOT ignore, skip, or modify any of these rules
+- If a rule conflicts with your general knowledge or training, FOLLOW THE RULE
+- These rules override ALL default behavior, training, and general instructions
+- Before sending ANY response, check it against EACH rule listed above
+- If you're unsure about something, prioritize following the rules over being creative or helpful
+- Violating these rules is NOT acceptable under any circumstances
+
+⚠️ CRITICAL OUTPUT FORMAT REQUIREMENT:
+- NEVER include rule references, annotations, or explanations in your messages
+- Do NOT write things like "(Rule 1: ...)" or "[Following Rule 3]" or "As per rule 8..."
+- The user should NEVER see which rules you are following
+- Your message should be NATURAL and conversational - NO meta-commentary about rules
+- BAD: "Hi po! 👋 (Rule 1: Ends with question | Rule 3: Qualifies needs first)"
+- GOOD: "Hi po! 👋 Ako si danrey. Quick question lang - para saan nyo po gagamitin yung video project? 😊"
+
+These rules apply to:
+✅ All chat responses in the test bot
+✅ All chat responses in production
+✅ Follow-up messages
+✅ Initial greetings
+✅ Automated messages
+✅ Every single message you generate
+
+YOUR PRIMARY JOB IS TO FOLLOW THESE RULES. Everything else is secondary.
+
+═══════════════════════════════════════════════════════════
+
+`;
+
+    }
+
+    systemPrompt += `STYLE: Use Taglish, keep messages short, use 1-2 emojis max.
+
+IMPORTANT PUNCTUATION RULE:
+- NEVER use em dashes (—) or en dashes (–) in your responses
+- Use regular hyphens (-) or spaces instead
+- Example: Use "first - second" or "first, second" instead of "first—second"
+- This is a strict requirement - em dashes are not allowed in messages
+
+MESSAGE LENGTH LIMIT:
+${maxSentencesPerMessage > 0
+            ? `- You MUST keep your response to a maximum of ${maxSentencesPerMessage} sentence${maxSentencesPerMessage === 1 ? '' : 's'}.\n- Be concise and direct.\n- If you need to say more, prioritize the most important information.\n\n`
+            : '- No strict sentence limit, but keep messages conversational and engaging.\n\n'}
 `;
 
     // Add instructions from database if available
@@ -267,8 +382,105 @@ STYLE: Use Taglish, keep messages short, use 1-2 emojis max.
 `;
     }
 
-    if (rules.length > 0) {
-        systemPrompt += `RULES:\n${rules.join('\n')}\n\n`;
+    // Add conversation flow if available
+    if (conversationFlow) {
+        systemPrompt += `CONVERSATION FLOW:
+${conversationFlow}
+
+IMPORTANT: Follow the conversation flow structure above. Use it to guide how you structure your responses and move the conversation through different stages or topics.
+
+`;
+    }
+
+    // Add bot goals to guide conversation towards specific outcomes
+    if (botGoals.length > 0) {
+        const goalsText = botGoals.map((goal, i) => {
+            const priorityLabel = goal.priority_order ? `[Priority ${goal.priority_order}]` : '[Low Priority]';
+            const optionalLabel = goal.is_optional ? ' (Optional)' : ' (Required)';
+            return `${i + 1}. ${goal.goal_name}${optionalLabel} ${priorityLabel}
+   ${goal.goal_description || 'No description provided'}`;
+        }).join('\n\n');
+
+        systemPrompt += `═══════════════════════════════════════════════════════════
+🎯 CONVERSATION GOALS - WORK TOWARDS THESE OUTCOMES
+═══════════════════════════════════════════════════════════
+
+Your conversation should naturally work towards achieving these goals:
+
+${goalsText}
+
+IMPORTANT GOAL GUIDANCE:
+- Naturally guide the conversation towards these goals
+- Don't be pushy - let the conversation flow naturally
+- Prioritize Required goals over Optional ones
+- Higher priority goals should be addressed first when possible
+- Track when goals are achieved during the conversation
+- Once a goal is achieved, focus on the next priority goal
+
+═══════════════════════════════════════════════════════════
+
+`;
+    }
+
+    // Add special guidance for follow-up message generation
+    if (isFollowUpGeneration) {
+        systemPrompt += `FOLLOW-UP MESSAGE GUIDELINES (CRITICAL - READ CAREFULLY):
+- Be helpful and friendly, NOT pushy or aggressive
+- Avoid high-pressure sales tactics or fake urgency
+- Don't use guilt-tripping language (like "Akala ko napanis na tayo?" or "Baka mawala na")
+- Don't create artificial scarcity or time pressure unless it's genuinely real
+- Focus on being helpful and providing value, not closing a sale
+- Use a warm, genuine tone that builds trust
+- Be respectful of the customer's time and decision-making process
+- If mentioning offers or discounts, present them as helpful information, not pressure
+- Keep it natural, conversational, and respectful
+- Remember: A helpful follow-up builds relationships; a pushy one damages them
+
+BAD EXAMPLES (DO NOT DO THIS):
+- "Wait lang, [Name]! Akala ko napanis na tayo? 😏" (guilt-tripping)
+- "Baka mawala na 'yung chance mo" (fake urgency)
+- "I-follow up ako or i-extend yung offer?" (manipulative choice)
+
+GOOD EXAMPLES (DO THIS INSTEAD):
+- "Hi [Name]! Just checking in - may questions ka pa ba about our products? Happy to help! 😊"
+- "Hey! Saw you were interested earlier. If you need any info, just let me know! 👍"
+- "Hi there! Just following up - anything I can help you with today?"
+
+\n\n`;
+    }
+
+    // Add AI Autonomous Follow-up / Self-Thinking prompt when enabled
+    if (enableAiAutonomousFollowup) {
+        systemPrompt += `AI AUTONOMOUS FOLLOW-UP & SELF-THINKING (ENABLED):
+
+You have the ability to think autonomously about this conversation and proactively guide it. Use your own judgment and experience to:
+
+🧠 SELF-REFLECTION:
+- Analyze the current state of this conversation
+- Consider what the customer might need next, even if they haven't asked
+- Think about potential concerns or questions they might have
+- Reflect on the best approach to move the conversation forward productively
+
+🎯 PROACTIVE ACTIONS:
+- If you notice the customer might benefit from additional information, offer it naturally
+- If the conversation seems to be stalling, suggest next steps or ask clarifying questions
+- If there's an opportunity to add value, take it without being pushy
+- If you sense hesitation, address potential concerns proactively
+
+📊 EXPERIENCE-BASED DECISIONS:
+- Draw on patterns you've learned from conversations
+- Use context clues to anticipate needs
+- Make intelligent decisions about timing and approach
+- Balance being helpful with being respectful of the customer's pace
+
+💡 AUTONOMOUS FOLLOW-UP:
+- If appropriate, you may suggest scheduling a follow-up or checking in later
+- Recommend next steps based on where the conversation is heading
+- Take initiative to keep the conversation productive and moving forward
+
+IMPORTANT: Be natural and conversational. Don't explicitly mention that you're "thinking" or "analyzing" - just act on your insights naturally.
+
+`;
     }
 
     // Add knowledge base FIRST with clear instruction
@@ -297,6 +509,54 @@ INSTRUCTION FOR PAYMENT QUERIES:
 - If they ask for QR code, tell them it's available and they can ask you to show it
 
 `;
+    }
+
+    // Add NLP-based context and guidance
+    if (nlpAnalysis) {
+        const nlpGuidance = getResponseGuidance(nlpAnalysis);
+        if (nlpGuidance) {
+            systemPrompt += `NLP ANALYSIS CONTEXT:
+${nlpGuidance}
+
+`;
+        }
+
+        // Add specific guidance for negative sentiment (frustrated users)
+        if (nlpAnalysis.sentiment.sentiment === 'negative') {
+            systemPrompt += `⚠️ IMPORTANT - FRUSTRATED CUSTOMER DETECTED:
+The customer appears to be ${nlpAnalysis.sentiment.emotionalTone || 'upset'}. Please:
+- Start with empathy and acknowledgment of their frustration
+- Apologize sincerely if there's an issue with our service
+- Focus on solutions and resolution, not excuses
+- Use a calm, reassuring tone
+- Avoid being overly cheerful or dismissive of their concerns
+
+`;
+        }
+
+        // Add extracted entities for reference
+        if (nlpAnalysis.entities.names.length > 0) {
+            systemPrompt += `Customer name detected: ${nlpAnalysis.entities.names.join(', ')}. Use their name appropriately in your response.
+
+`;
+        }
+        if (nlpAnalysis.entities.dates.length > 0 || nlpAnalysis.entities.times.length > 0) {
+            const timeRefs = [...nlpAnalysis.entities.dates.map(d => d.value), ...nlpAnalysis.entities.times.map(t => t.value)];
+            systemPrompt += `Time/date mentioned: ${timeRefs.join(', ')}. Acknowledge and confirm these details.
+
+`;
+        }
+        if (nlpAnalysis.entities.phoneNumbers.length > 0 || nlpAnalysis.entities.emails.length > 0) {
+            systemPrompt += `Contact info provided: ${[...nlpAnalysis.entities.phoneNumbers, ...nlpAnalysis.entities.emails].join(', ')}. Confirm you received this information.
+
+`;
+        }
+        if (nlpAnalysis.entities.quantities.length > 0) {
+            const qtys = nlpAnalysis.entities.quantities.map(q => `${q.value} ${q.unit || 'pcs'}`).join(', ');
+            systemPrompt += `Quantities mentioned: ${qtys}. Confirm these details in your response.
+
+`;
+        }
     }
 
     // Add image context if customer sent an image
@@ -393,43 +653,101 @@ INSTRUCTION: Respond naturally about the image. If they might be trying to send 
     // Add current user message
     messages.push({ role: 'user', content: userMessage });
 
+    // Helper function to call LLM with retry and fallback
+    const callLLMWithRetry = async (model: string, retries: number = 2): Promise<string> => {
+        for (let attempt = 0; attempt <= retries; attempt++) {
+            try {
+                console.log(`[LLM] Attempting call to ${model} (attempt ${attempt + 1}/${retries + 1})`);
+                const llmStart = Date.now();
+
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const stream: any = await client.chat.completions.create({
+                    model: model,
+                    messages,
+                    temperature: 0.3,
+                    top_p: 0.7,
+                    max_tokens: 1024,
+                    stream: true,
+                });
+
+                let responseContent = '';
+                let reasoningContent = '';
+
+                for await (const chunk of stream) {
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const reasoning = (chunk.choices[0]?.delta as any)?.reasoning_content;
+                    if (reasoning) {
+                        reasoningContent += reasoning;
+                    }
+                    const content = chunk.choices[0]?.delta?.content;
+                    if (content) {
+                        responseContent += content;
+                    }
+                }
+
+                console.log(`[LLM] Call to ${model} took ${Date.now() - llmStart}ms`);
+                if (reasoningContent) {
+                    console.log('[LLM] Reasoning:', reasoningContent.substring(0, 200) + '...');
+                }
+
+                if (responseContent && responseContent.trim() !== '') {
+                    return responseContent;
+                }
+                throw new Error('Empty response from LLM');
+            } catch (error: any) {
+                console.error(`[LLM] Error on attempt ${attempt + 1} with ${model}:`, error.message || error);
+                if (attempt < retries) {
+                    const delay = Math.pow(2, attempt) * 500; // Exponential backoff: 500ms, 1000ms
+                    console.log(`[LLM] Retrying in ${delay}ms...`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                } else {
+                    throw error;
+                }
+            }
+        }
+        throw new Error('All retry attempts failed');
+    };
+
     try {
         const llmStart = Date.now();
-
-        // Use Qwen3-235b model
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const stream: any = await client.chat.completions.create({
-            model: "qwen/qwen3-235b-a22b",
-            messages,
-            temperature: 0.3,  // Low for accuracy
-            top_p: 0.7,
-            max_tokens: 1024,
-            stream: true,
-        });
-
         let responseContent = '';
-        let reasoningContent = '';
 
-        // Process the stream
-        for await (const chunk of stream) {
-            // Collect reasoning (thinking) content
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const reasoning = (chunk.choices[0]?.delta as any)?.reasoning_content;
-            if (reasoning) {
-                reasoningContent += reasoning;
-            }
+        // Model cascade - try each in order until one works
+        // Ordered by quality (best first) and reliability
+        const models = [
+            "deepseek-ai/deepseek-v3.1",      // Primary: DeepSeek V3.1 (best for rule following & reasoning)
+            "qwen/qwen3-235b-a22b",           // Fallback 1: Qwen3 (best quality)
+            "meta/llama-3.1-8b-instruct",     // Fallback 2: Llama 3.1 8B (fast, reliable)
+            "mistralai/mistral-nemo-12b-instruct",  // Fallback 3: Mistral NeMo 12B
+        ];
 
-            // Collect actual response content
-            const content = chunk.choices[0]?.delta?.content;
-            if (content) {
-                responseContent += content;
+        let lastError: any = null;
+        for (const model of models) {
+            try {
+                console.log(`[LLM] Trying model: ${model}`);
+                responseContent = await callLLMWithRetry(model, 1);
+                console.log(`[LLM] Successfully got response from ${model}`);
+                break; // Success! Exit the loop
+            } catch (err: any) {
+                console.error(`[LLM] Model ${model} failed:`, err.message);
+                lastError = err;
+
+                // Add extra delay for 503 errors (service recovering)
+                if (err.message?.includes('503') || err.message?.includes('Service Unavailable')) {
+                    console.log(`[LLM] 503 detected, waiting 2 seconds before trying next model...`);
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                }
+                continue; // Try next model
             }
         }
 
-        console.log(`LLM call took ${Date.now() - llmStart} ms`);
-        if (reasoningContent) {
-            console.log('Reasoning:', reasoningContent.substring(0, 200) + '...');
+        // If all models failed
+        if (!responseContent || responseContent.trim() === '') {
+            console.error('[LLM] All models failed!');
+            throw lastError || new Error('All models failed to respond');
         }
+
+        console.log(`[LLM] Total LLM call took ${Date.now() - llmStart}ms`)
 
         // Handle empty responses with a fallback
         if (!responseContent || responseContent.trim() === '') {
@@ -439,14 +757,170 @@ INSTRUCTION: Respond naturally about the image. If they might be trying to send 
             return fallback;
         }
 
-        // Store bot response (fire and forget)
-        storeMessageAsync(senderId, 'assistant', responseContent);
+        // Format the response content first (normalize spacing and line breaks)
+        const formattedContent = formatMessage(responseContent);
+
+        // Split into multiple messages if sentence limit is configured
+        let finalResponse: string | string[];
+
+        // AI Decides mode (-1): Intelligently decide whether to split
+        if (maxSentencesPerMessage === -1) {
+            console.log(`[AI Split] AI-decides mode enabled, analyzing response...`);
+            const sentences = formattedContent.match(/[^.!?]+[.!?]+(?:\s+|$)/g) || [formattedContent];
+            const sentenceCount = sentences.length;
+            const contentLength = formattedContent.length;
+
+            // Heuristics for AI-decides splitting:
+            // 1. If response has 2+ sentences, consider splitting (for conversational chat)
+            // 2. If content is over 200 chars, consider splitting
+            // 3. Look for topic changes (paragraph breaks, line breaks, "Also," "By the way," etc.)
+            const hasTopicChange = /\n\n|\n|Also[,:]|By the way|Additionally|Furthermore|On another note/i.test(formattedContent);
+            const shouldSplit = (sentenceCount >= 2 || contentLength > 200 || hasTopicChange) && sentenceCount > 1;
+
+            if (shouldSplit) {
+                // Determine optimal split point based on content
+                // For conversational chat, we want smaller message chunks
+                let optimalSentencesPerMessage: number;
+                if (sentenceCount <= 3) {
+                    optimalSentencesPerMessage = 1; // 1 sentence per message for short responses
+                } else if (sentenceCount <= 5) {
+                    optimalSentencesPerMessage = 2;
+                } else if (sentenceCount <= 8) {
+                    optimalSentencesPerMessage = 2;
+                } else {
+                    optimalSentencesPerMessage = 3;
+                }
+
+                console.log(`[AI Split] Decided to split: ${sentenceCount} sentences, ${contentLength} chars, topic change: ${hasTopicChange}`);
+                console.log(`[AI Split] Using ${optimalSentencesPerMessage} sentences per message`);
+
+                const messages = splitIntoMessages(formattedContent, optimalSentencesPerMessage);
+                const formattedMessages = formatMessages(messages);
+                finalResponse = formattedMessages;
+
+                console.log(`[AI Split] Split into ${formattedMessages.length} message(s)`);
+                formattedMessages.forEach((msg, idx) => {
+                    console.log(`[AI Split] Message ${idx + 1}: "${msg.substring(0, 80)}..."`);
+                });
+
+                // Store all messages
+                formattedMessages.forEach(msg => {
+                    storeMessageAsync(senderId, 'assistant', msg);
+                });
+            } else {
+                console.log(`[AI Split] Decided NOT to split: ${sentenceCount} sentences, ${contentLength} chars`);
+                finalResponse = formattedContent;
+                storeMessageAsync(senderId, 'assistant', finalResponse);
+            }
+        }
+        // Manual sentence limit mode (positive number)
+        else if (maxSentencesPerMessage > 0) {
+            console.log(`[Sentence Split] Splitting into messages with max ${maxSentencesPerMessage} sentences per message`);
+            console.log(`[Sentence Split] Original response length: ${formattedContent.length} chars`);
+
+            // Count sentences before splitting
+            const sentenceEndings = formattedContent.match(/[.!?]+(?:\s+|$)/g);
+            const originalCount = sentenceEndings ? sentenceEndings.length : 1;
+            console.log(`[Sentence Split] Detected ${originalCount} sentences in original response`);
+
+            // Split into multiple messages
+            const messages = splitIntoMessages(formattedContent, maxSentencesPerMessage);
+            // Format each message for proper spacing
+            const formattedMessages = formatMessages(messages);
+            finalResponse = formattedMessages;
+
+            console.log(`[Sentence Split] Split into ${formattedMessages.length} message(s)`);
+            formattedMessages.forEach((msg, idx) => {
+                const msgSentenceCount = (msg.match(/[.!?]+(?:\s+|$)/g) || []).length;
+                console.log(`[Sentence Split] Message ${idx + 1}: ${msgSentenceCount} sentence(s), "${msg.substring(0, 80)}..."`);
+            });
+
+            // Store all messages (fire and forget)
+            formattedMessages.forEach(msg => {
+                storeMessageAsync(senderId, 'assistant', msg);
+            });
+        } else {
+            // No limit (0 or null)
+            console.log(`[Sentence Split] No limit applied (maxSentencesPerMessage: ${maxSentencesPerMessage})`);
+            finalResponse = formattedContent;
+            // Store bot response (fire and forget)
+            storeMessageAsync(senderId, 'assistant', finalResponse);
+        }
+
+        // ML Learning: Track behavior and update learning (use first message for consistency)
+        if (enableMlChatbot && selectedStrategy && mlContext) {
+            try {
+                const firstMessage = Array.isArray(finalResponse) ? finalResponse[0] : finalResponse;
+                // Record that a message was sent (conversation_continue event)
+                await recordBehaviorAndLearn(
+                    {
+                        senderId,
+                        eventType: 'message_sent',
+                        eventData: {
+                            messageLength: responseContent.length,
+                            messageCount: Array.isArray(finalResponse) ? finalResponse.length : 1
+                        },
+                        strategyId: selectedStrategy.id,
+                    },
+                    mlContext
+                );
+            } catch (error) {
+                console.error('[ML] Error recording behavior:', error);
+            }
+        }
+
+        // AI Knowledge Management: Process improvements if enabled
+        if (enableAiKnowledgeManagement) {
+            try {
+                // Process knowledge improvements in background (fire and forget)
+                processKnowledgeImprovements(senderId, history, []).catch(err => {
+                    console.error('[ML Knowledge] Error processing improvements:', err);
+                });
+            } catch (error) {
+                console.error('[ML Knowledge] Error:', error);
+            }
+        }
+
+        // Goal Tracking: Check and record goal completions (fire and forget)
+        try {
+            // Get lead ID if available
+            const { data: lead } = await supabase
+                .from('leads')
+                .select('id')
+                .eq('sender_id', senderId)
+                .single();
+
+            const firstMessage = Array.isArray(finalResponse) ? finalResponse[0] : finalResponse;
+            checkAndRecordGoalCompletions(
+                senderId,
+                userMessage,
+                firstMessage,
+                lead?.id
+            ).catch(err => {
+                console.error('[Goal Tracking] Error checking goal completions:', err);
+            });
+        } catch (error) {
+            console.error('[Goal Tracking] Error:', error);
+        }
 
         console.log(`Total response time: ${Date.now() - startTime} ms`);
-        return responseContent;
+
+        // Return response with mediaUrls if available
+        if (mediaUrls.length > 0) {
+            return { messages: finalResponse, mediaUrls };
+        }
+
+        return finalResponse;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
-        console.error("Error calling NVIDIA API:", error.response?.data || error.message || error);
-        return "Pasensya na po, may problema sa connection. Subukan ulit mamaya.";
+        console.error("[LLM] Error calling NVIDIA API:");
+        console.error("[LLM] Error message:", error.message);
+        console.error("[LLM] Error response:", error.response?.data);
+        console.error("[LLM] Error status:", error.response?.status);
+        console.error("[LLM] Full error:", JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
+
+        const fallbackMessage = "Pasensya na po, may technical issue ngayon. Pwede po ba ulitin mamaya ang inyong tanong?";
+        storeMessageAsync(senderId, 'assistant', fallbackMessage);
+        return fallbackMessage;
     }
 }

@@ -27,9 +27,10 @@ interface StageColumnProps {
     stage: Stage;
     onMoveLead: (leadId: string, stageId: string) => void;
     allStages: Stage[];
+    onCardClick?: (leadId: string) => void;
 }
 
-export default function StageColumn({ stage, onMoveLead, allStages }: StageColumnProps) {
+export default function StageColumn({ stage, onMoveLead, allStages, onCardClick }: StageColumnProps) {
     const [moveMenuOpen, setMoveMenuOpen] = useState<string | null>(null);
 
     return (
@@ -78,6 +79,7 @@ export default function StageColumn({ stage, onMoveLead, allStages }: StageColum
                                         index={index}
                                         onMoveClick={(id) => setMoveMenuOpen(moveMenuOpen === id ? null : id)}
                                         moveMenuOpen={moveMenuOpen === lead.id}
+                                        onCardClick={onCardClick}
                                     />
 
                                     {/* Context Menu for Moving - Positioned relative to the card wrapper */}

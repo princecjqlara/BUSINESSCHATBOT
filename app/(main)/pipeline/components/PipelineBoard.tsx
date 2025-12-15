@@ -5,6 +5,7 @@ import { Plus, Settings2, RefreshCw, Filter, Search, LayoutTemplate, List, Kanba
 import { DragDropContext, DropResult } from '@hello-pangea/dnd';
 import StageColumn from './StageColumn';
 import ListView from './ListView';
+import LeadDetailsModal from './LeadDetailsModal';
 
 interface Lead {
     id: string;
@@ -37,6 +38,10 @@ export default function PipelineBoard() {
     const [searchQuery, setSearchQuery] = useState('');
     const [filterStageId, setFilterStageId] = useState<string | 'all'>('all');
     const [isFilterOpen, setIsFilterOpen] = useState(false);
+    
+    // Modal State
+    const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
+    const [isModalOpen, setIsModalOpen] = useState(false);
 
     const fetchData = useCallback(async () => {
         try {
@@ -97,6 +102,16 @@ export default function PipelineBoard() {
         } catch (error) {
             console.error('Error moving lead:', error);
         }
+    };
+
+    const handleLeadCardClick = (leadId: string) => {
+        setSelectedLeadId(leadId);
+        setIsModalOpen(true);
+    };
+
+    const handleCloseModal = () => {
+        setIsModalOpen(false);
+        setSelectedLeadId(null);
     };
 
     const onDragEnd = (result: DropResult) => {
@@ -274,6 +289,7 @@ export default function PipelineBoard() {
                                     stage={stage}
                                     onMoveLead={handleMoveLead}
                                     allStages={stages}
+                                    onCardClick={handleLeadCardClick}
                                 />
                             ))}
 
@@ -319,9 +335,18 @@ export default function PipelineBoard() {
                         </div>
                     </DragDropContext>
                 ) : (
-                    <ListView stages={filteredStages} onMoveLead={handleMoveLead} />
+                    <ListView stages={filteredStages} onMoveLead={handleMoveLead} onCardClick={handleLeadCardClick} />
                 )}
             </div>
+
+            {/* Lead Details Modal */}
+            {selectedLeadId && (
+                <LeadDetailsModal
+                    leadId={selectedLeadId}
+                    isOpen={isModalOpen}
+                    onClose={handleCloseModal}
+                />
+            )}
         </div>
     );
 }

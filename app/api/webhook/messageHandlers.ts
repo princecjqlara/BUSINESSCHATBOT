@@ -3,13 +3,35 @@ import { extractAndStoreContactInfo } from '@/app/lib/contactExtractionService';
 import { isTakeoverActive } from '@/app/lib/humanTakeoverService';
 import { analyzeImageForReceipt, isConfirmedReceipt } from '@/app/lib/receiptDetectionService';
 import { analyzeAndUpdateStage, getOrCreateLead, incrementMessageCount, moveLeadToReceiptStage, shouldAnalyzeStage } from '@/app/lib/pipelineService';
+import { computeBestContactTimes, storeBestContactTimes } from '@/app/lib/bestContactTimesService';
+import { stripMediaLinksFromText } from '@/app/lib/mediaUtils';
 import { supabase } from '@/app/lib/supabase';
-import { callSendAPI, sendPaymentMethodCards, sendProductCards, sendPropertyCards, sendTypingIndicator } from './facebookClient';
+import { callSendAPI, sendMediaAttachments, sendPaymentMethodCards, sendProductCards, sendPropertyCards, sendTypingIndicator } from './facebookClient';
 import { getPageToken } from './config';
 import { getPaymentMethods, getProducts, getProperties, PaymentMethod } from './data';
 import { isPaymentQuery, isProductQuery, isPropertyQuery } from './keywords';
 
 type WaitUntil = (promise: Promise<unknown>) => void;
+
+/**
+ * Update best contact times for a lead based on message history
+ * Runs in background, non-blocking
+ */
+async function updateBestContactTimes(senderId: string, leadId: string): Promise<void> {
+    try {
+        console.log(`[BestContactTimes] Updating best contact times for lead ${leadId} (sender: ${senderId})`);
+        const computed = await computeBestContactTimes(senderId);
+        if (computed) {
+            await storeBestContactTimes(leadId, computed);
+            console.log(`[BestContactTimes] Successfully updated best contact times for lead ${leadId}`);
+        } else {
+            console.log(`[BestContactTimes] No sufficient data to compute best contact times for lead ${leadId}`);
+        }
+    } catch (error) {
+        console.error(`[BestContactTimes] Error updating best contact times for lead ${leadId}:`, error);
+        // Don't throw - this is a background operation
+    }
+}
 
 // Handle Referral Events (Chat to Buy)
 export async function handleReferral(sender_psid: string, referral: any, pageId?: string) {
@@ -243,8 +265,25 @@ export async function handleMessage(sender_psid: string, received_message: strin
             const messageCount = await incrementMessageCount(lead.id);
             console.log(`Lead ${lead.id} message count: ${messageCount}`);
 
-            // Extract and store contact info (phone/email) from the message
-            extractAndStoreContactInfo(lead.id, received_message).catch((err: unknown) => {
+            // Get conversation history for better contact extraction
+            let conversationHistory: Array<{ role: string; content: string }> = [];
+            try {
+                const { data: messages } = await supabase
+                    .from('conversations')
+                    .select('role, content')
+                    .eq('sender_id', sender_psid)
+                    .order('created_at', { ascending: true })
+                    .limit(10); // Get last 10 messages for context
+
+                if (messages) {
+                    conversationHistory = messages;
+                }
+            } catch (err) {
+                console.error('Error fetching conversation history for extraction:', err);
+            }
+
+            // Extract and store contact info (phone/email) and business details from the message
+            extractAndStoreContactInfo(lead.id, received_message, conversationHistory).catch((err: unknown) => {
                 console.error('Error extracting contact info:', err);
             });
 
@@ -257,14 +296,65 @@ export async function handleMessage(sender_psid: string, received_message: strin
             }
         }
 
-        const responseText = await getBotResponse(received_message, sender_psid);
-        console.log('Bot response generated:', responseText.substring(0, 100) + '...');
+        const responseResult = await getBotResponse(received_message, sender_psid);
 
-        const response = {
-            text: responseText,
-        };
+        // Extract messages and mediaUrls from response
+        let messages: string[];
+        let mediaUrls: string[] = [];
 
-        await callSendAPI(sender_psid, response, pageId);
+        if (typeof responseResult === 'object' && 'messages' in responseResult) {
+            // New format with mediaUrls
+            const response = responseResult.messages;
+            messages = Array.isArray(response) ? response : [response];
+            mediaUrls = responseResult.mediaUrls || [];
+        } else {
+            // Legacy format (string or string[])
+            messages = Array.isArray(responseResult) ? responseResult : [responseResult];
+        }
+
+        console.log(`Bot response generated: ${messages.length} message(s), ${mediaUrls.length} media URL(s)`);
+
+        // Send each message sequentially with a small delay between them
+        for (let i = 0; i < messages.length; i++) {
+            let message = messages[i];
+
+            // Strip media URLs from text if we're sending them as attachments
+            // This prevents duplicate media (once as text link, once as attachment)
+            if (mediaUrls.length > 0) {
+                message = stripMediaLinksFromText(message, mediaUrls);
+            }
+
+            // Skip empty messages after stripping
+            if (!message || message.trim().length === 0) {
+                console.log(`Skipping empty message ${i + 1}/${messages.length} after stripping media links`);
+                continue;
+            }
+
+            console.log(`Sending message ${i + 1}/${messages.length}: "${message.substring(0, 80)}..."`);
+
+            await callSendAPI(sender_psid, { text: message }, pageId);
+
+            // Add a small delay between messages (except for the last one)
+            if (i < messages.length - 1) {
+                await new Promise(resolve => setTimeout(resolve, 500)); // 500ms delay
+            }
+        }
+
+        // Send media attachments after all text messages
+        if (mediaUrls.length > 0) {
+            console.log(`[Media] Sending ${mediaUrls.length} media attachment(s) from knowledge base`);
+            await sendMediaAttachments(sender_psid, mediaUrls, pageId);
+        }
+
+        // Update best contact times after messages are sent (runs in background, non-blocking)
+        // Add a small delay to allow database writes to complete
+        if (lead) {
+            setTimeout(() => {
+                updateBestContactTimes(sender_psid, lead.id).catch((err: unknown) => {
+                    console.error('Error updating best contact times:', err);
+                });
+            }, 1000); // 1 second delay to allow conversation storage to complete
+        }
     } finally {
         // Turn off typing indicator
         await sendTypingIndicator(sender_psid, false, pageId);
@@ -395,7 +485,24 @@ export async function handleImageMessage(sender_psid: string, imageUrl: string, 
 
         // Extract contact info from accompanying text if present
         if (accompanyingText) {
-            extractAndStoreContactInfo(lead.id, accompanyingText).catch((err: unknown) => {
+            // Get conversation history for better contact extraction
+            let conversationHistory: Array<{ role: string; content: string }> = [];
+            try {
+                const { data: messages } = await supabase
+                    .from('conversations')
+                    .select('role, content')
+                    .eq('sender_id', sender_psid)
+                    .order('created_at', { ascending: true })
+                    .limit(10); // Get last 10 messages for context
+
+                if (messages) {
+                    conversationHistory = messages;
+                }
+            } catch (err) {
+                console.error('Error fetching conversation history for extraction:', err);
+            }
+
+            extractAndStoreContactInfo(lead.id, accompanyingText, conversationHistory).catch((err: unknown) => {
                 console.error('Error extracting contact info from image message:', err);
             });
         }
@@ -406,11 +513,63 @@ export async function handleImageMessage(sender_psid: string, imageUrl: string, 
             : "[Customer sent an image]";
 
         // Get chatbot response with image context
-        const responseText = await getBotResponse(userMessage, sender_psid, imageContext);
-        console.log('Bot response for image:', responseText.substring(0, 100) + '...');
+        const responseResult = await getBotResponse(userMessage, sender_psid, imageContext);
 
-        // Send the AI's response
-        await callSendAPI(sender_psid, { text: responseText }, pageId);
+        // Extract messages and mediaUrls from response
+        let messages: string[];
+        let mediaUrls: string[] = [];
+
+        if (typeof responseResult === 'object' && 'messages' in responseResult) {
+            // New format with mediaUrls
+            const response = responseResult.messages;
+            messages = Array.isArray(response) ? response : [response];
+            mediaUrls = responseResult.mediaUrls || [];
+        } else {
+            // Legacy format (string or string[])
+            messages = Array.isArray(responseResult) ? responseResult : [responseResult];
+        }
+
+        console.log(`Bot response for image: ${messages.length} message(s), ${mediaUrls.length} media URL(s)`);
+
+        // Send each message sequentially with a small delay between them
+        for (let i = 0; i < messages.length; i++) {
+            let message = messages[i];
+
+            // Strip media URLs from text if we're sending them as attachments
+            // This prevents duplicate media (once as text link, once as attachment)
+            if (mediaUrls.length > 0) {
+                message = stripMediaLinksFromText(message, mediaUrls);
+            }
+
+            // Skip empty messages after stripping
+            if (!message || message.trim().length === 0) {
+                console.log(`Skipping empty message ${i + 1}/${messages.length} after stripping media links`);
+                continue;
+            }
+
+            console.log(`Sending message ${i + 1}/${messages.length}: "${message.substring(0, 80)}..."`);
+
+            await callSendAPI(sender_psid, { text: message }, pageId);
+
+            // Add a small delay between messages (except for the last one)
+            if (i < messages.length - 1) {
+                await new Promise(resolve => setTimeout(resolve, 500)); // 500ms delay
+            }
+        }
+
+        // Send media attachments after all text messages
+        if (mediaUrls.length > 0) {
+            console.log(`[Media] Sending ${mediaUrls.length} media attachment(s) from knowledge base`);
+            await sendMediaAttachments(sender_psid, mediaUrls, pageId);
+        }
+
+        // Update best contact times after messages are sent (runs in background, non-blocking)
+        // Add a small delay to allow database writes to complete
+        setTimeout(() => {
+            updateBestContactTimes(sender_psid, lead.id).catch((err: unknown) => {
+                console.error('Error updating best contact times:', err);
+            });
+        }, 1000); // 1 second delay to allow conversation storage to complete
 
     } catch (error) {
         console.error('Error in handleImageMessage:', error);
