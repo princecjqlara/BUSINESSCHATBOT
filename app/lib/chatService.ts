@@ -8,6 +8,7 @@ import { limitSentences, splitIntoMessages } from './sentenceLimiter';
 import { formatMessage, formatMessages } from './messageFormatter';
 import { checkAndRecordGoalCompletions, getActiveBotGoals } from './goalTrackingService';
 import { analyzeMessage, getResponseGuidance, type NLPAnalysisResult } from './nlpService';
+import { validateResponse, logValidationResult } from './responseValidationService';
 
 const MAX_HISTORY = 10; // Reduced to prevent context overload
 
@@ -322,6 +323,7 @@ export async function getBotResponse(
     const enableMlChatbot = settings.enable_ml_chatbot ?? false;
     const enableAiKnowledgeManagement = settings.enable_ai_knowledge_management ?? false;
     const enableAiAutonomousFollowup = settings.enable_ai_autonomous_followup ?? false;
+    const enableResponseValidation = settings.enable_response_validation ?? false;
     const maxSentencesPerMessage = settings.max_sentences_per_message ?? 3;
     const conversationFlow = settings.conversation_flow || '';
 
@@ -867,8 +869,45 @@ INSTRUCTION: Respond naturally about the image. If they might be trying to send 
             return fallback;
         }
 
+        // Multi-model response validation (if enabled)
+        let validatedContent = responseContent;
+        if (enableResponseValidation) {
+            console.log('[Response Validation] Enabled, validating response...');
+            try {
+                const validationResult = await validateResponse(validatedContent, {
+                    rules,
+                    knowledgeContext: context || '',
+                    conversationHistory: history,
+                    botName,
+                    botTone,
+                });
+
+                // Log validation result for analytics (fire and forget)
+                logValidationResult(senderId, responseContent, validationResult).catch(err => {
+                    console.error('[Response Validation] Error logging result:', err);
+                });
+
+                if (!validationResult.isValid) {
+                    console.log(`[Response Validation] Issues found: ${validationResult.issues.join(', ')}`);
+
+                    // Use corrected response if provided
+                    if (validationResult.correctedResponse) {
+                        console.log('[Response Validation] Using corrected response');
+                        validatedContent = validationResult.correctedResponse;
+                    } else {
+                        console.log('[Response Validation] No corrected response provided, using original');
+                    }
+                } else {
+                    console.log(`[Response Validation] Response passed validation (${validationResult.validationTimeMs}ms)`);
+                }
+            } catch (validationError) {
+                console.error('[Response Validation] Error during validation:', validationError);
+                // Continue with original response on error
+            }
+        }
+
         // Format the response content first (normalize spacing and line breaks)
-        const formattedContent = formatMessage(responseContent);
+        const formattedContent = formatMessage(validatedContent);
 
         // Split into multiple messages if sentence limit is configured
         let finalResponse: string | string[];
