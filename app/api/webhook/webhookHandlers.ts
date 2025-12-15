@@ -116,22 +116,38 @@ export async function handlePostWebhook(req: Request) {
                     );
                     const messageText = webhook_event.message.text;
 
-                    // Handle image attachments - pass any accompanying text to the image handler
+                    // Handle image attachments - collect ALL images from this message first
+                    // to avoid spamming the user with multiple responses
                     if (webhook_event.message.attachments) {
+                        const imageUrls: string[] = [];
+
                         for (const attachment of webhook_event.message.attachments) {
                             if (attachment.type === 'image' && attachment.payload?.url) {
-                                console.log('Image attachment detected:', attachment.payload.url.substring(0, 100));
-                                waitUntil(
-                                    handleImageMessage(
-                                        sender_psid,
-                                        attachment.payload.url,
-                                        recipient_psid,
-                                        messageText // Pass accompanying text
-                                    ).catch(err => {
-                                        console.error('Error handling image message:', err);
-                                    })
-                                );
+                                imageUrls.push(attachment.payload.url);
                             }
+                        }
+
+                        // Only respond once, even if multiple images were sent
+                        if (imageUrls.length > 0) {
+                            console.log(`[Images] Received ${imageUrls.length} image(s) from ${sender_psid}`);
+
+                            // Process only the first image to generate a response
+                            // (analyzing all images would be expensive and likely unnecessary)
+                            // Pass the count of additional images so the AI can acknowledge them
+                            const additionalImagesText = imageUrls.length > 1
+                                ? ` (+ ${imageUrls.length - 1} more image${imageUrls.length > 2 ? 's' : ''})`
+                                : '';
+
+                            waitUntil(
+                                handleImageMessage(
+                                    sender_psid,
+                                    imageUrls[0], // Process first image only
+                                    recipient_psid,
+                                    messageText ? `${messageText}${additionalImagesText}` : (imageUrls.length > 1 ? `[Sent ${imageUrls.length} images]` : undefined)
+                                ).catch(err => {
+                                    console.error('Error handling image message:', err);
+                                })
+                            );
                         }
                     }
 
