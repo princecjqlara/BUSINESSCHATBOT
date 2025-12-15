@@ -42,3 +42,6 @@ ngrok.log
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Windows reserved names
+nul
