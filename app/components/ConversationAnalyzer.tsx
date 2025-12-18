@@ -39,12 +39,19 @@ interface ConversationAnalysis {
     };
 }
 
-interface RecentConversation {
+interface Conversation {
     senderId: string;
     leadId: string | null;
     leadName: string | null;
+    pipelineStage: string | null;
     messageCount: number;
     lastMessageAt: string;
+}
+
+interface LearnedRule {
+    rule: string;
+    category: string;
+    priority: number;
 }
 
 // Rating configurations
@@ -57,14 +64,16 @@ const ratingConfig = {
 };
 
 export default function ConversationAnalyzer() {
-    const [conversations, setConversations] = useState<RecentConversation[]>([]);
+    const [conversations, setConversations] = useState<Conversation[]>([]);
     const [selectedSenderId, setSelectedSenderId] = useState<string>('');
     const [analysis, setAnalysis] = useState<ConversationAnalysis | null>(null);
     const [loading, setLoading] = useState(false);
     const [loadingConversations, setLoadingConversations] = useState(true);
     const [expandedMessages, setExpandedMessages] = useState<Set<string>>(new Set());
+    const [autoLearning, setAutoLearning] = useState(false);
+    const [learnResult, setLearnResult] = useState<{ rulesAdded: number; rules: LearnedRule[] } | null>(null);
 
-    // Fetch recent conversations on mount
+    // Fetch conversations on mount (filtered, no web_test)
     useEffect(() => {
         fetchConversations();
     }, []);
@@ -72,7 +81,7 @@ export default function ConversationAnalyzer() {
     const fetchConversations = async () => {
         setLoadingConversations(true);
         try {
-            const response = await fetch('/api/ml/analytics/conversation-analysis?type=list&limit=30');
+            const response = await fetch('/api/ml/analytics/auto-learn?limit=50');
             if (response.ok) {
                 const data = await response.json();
                 setConversations(data.conversations || []);
@@ -84,17 +93,17 @@ export default function ConversationAnalyzer() {
         }
     };
 
-    const analyzeConversation = async () => {
-        if (!selectedSenderId) return;
-
+    const selectAndAnalyze = async (senderId: string) => {
+        setSelectedSenderId(senderId);
         setLoading(true);
         setAnalysis(null);
+        setLearnResult(null);
 
         try {
             const response = await fetch('/api/ml/analytics/conversation-analysis', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ senderId: selectedSenderId, limit: 50 }),
+                body: JSON.stringify({ senderId, limit: 50 }),
             });
 
             if (response.ok) {
@@ -107,6 +116,28 @@ export default function ConversationAnalyzer() {
             console.error('Error analyzing conversation:', error);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const autoLearn = async () => {
+        if (!analysis) return;
+
+        setAutoLearning(true);
+        try {
+            const response = await fetch('/api/ml/analytics/auto-learn', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ analysis }),
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                setLearnResult({ rulesAdded: data.rulesAdded, rules: data.rules || [] });
+            }
+        } catch (error) {
+            console.error('Error auto-learning:', error);
+        } finally {
+            setAutoLearning(false);
         }
     };
 
@@ -144,72 +175,94 @@ export default function ConversationAnalyzer() {
         return '#ef4444';
     };
 
+    const getMistakeCount = (): number => {
+        if (!analysis) return 0;
+        return analysis.summary.mistakeCount + analysis.summary.blunderCount + analysis.summary.questionableCount;
+    };
+
     return (
         <div style={{ display: 'flex', gap: '24px', minHeight: '600px' }}>
-            {/* Left Panel - Conversation Selector & Analysis Summary */}
-            <div style={{ width: '320px', flexShrink: 0 }}>
-                {/* Conversation Selector */}
+            {/* Left Panel - Conversation List */}
+            <div style={{ width: '320px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                {/* Conversation List */}
                 <div style={{
                     background: '#1e293b',
                     borderRadius: '12px',
-                    padding: '20px',
                     border: '1px solid #334155',
-                    marginBottom: '16px',
+                    overflow: 'hidden',
+                    flex: 1,
+                    display: 'flex',
+                    flexDirection: 'column',
                 }}>
-                    <h3 style={{ color: '#fff', margin: '0 0 16px 0', fontSize: '16px', fontWeight: 600 }}>
-                        🎯 Select Conversation
-                    </h3>
+                    <div style={{ padding: '16px 20px', borderBottom: '1px solid #334155' }}>
+                        <h3 style={{ color: '#fff', margin: 0, fontSize: '16px', fontWeight: 600 }}>
+                            📋 Conversations
+                        </h3>
+                        <p style={{ color: '#64748b', margin: '4px 0 0 0', fontSize: '12px' }}>
+                            Click to analyze • Web tests filtered out
+                        </p>
+                    </div>
 
-                    {loadingConversations ? (
-                        <div style={{ color: '#64748b', padding: '12px 0' }}>Loading conversations...</div>
-                    ) : (
-                        <>
-                            <select
-                                value={selectedSenderId}
-                                onChange={(e) => setSelectedSenderId(e.target.value)}
-                                style={{
-                                    width: '100%',
-                                    padding: '12px',
-                                    background: '#0f172a',
-                                    border: '1px solid #334155',
-                                    borderRadius: '8px',
-                                    color: '#fff',
-                                    fontSize: '14px',
-                                    cursor: 'pointer',
-                                    marginBottom: '12px',
-                                }}
-                            >
-                                <option value="">Choose a contact...</option>
-                                {conversations.map((conv) => (
-                                    <option key={conv.senderId} value={conv.senderId}>
-                                        {conv.leadName || conv.senderId.slice(0, 15) + '...'} ({conv.messageCount} msgs)
-                                    </option>
-                                ))}
-                            </select>
-
-                            <button
-                                onClick={analyzeConversation}
-                                disabled={!selectedSenderId || loading}
-                                style={{
-                                    width: '100%',
-                                    padding: '12px',
-                                    background: selectedSenderId && !loading ? 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)' : '#334155',
-                                    border: 'none',
-                                    borderRadius: '8px',
-                                    color: '#fff',
-                                    fontSize: '14px',
-                                    fontWeight: 600,
-                                    cursor: selectedSenderId && !loading ? 'pointer' : 'not-allowed',
-                                    transition: 'all 0.2s',
-                                }}
-                            >
-                                {loading ? '⏳ Analyzing...' : '🔍 Analyze Conversation'}
-                            </button>
-                        </>
-                    )}
+                    <div style={{ flex: 1, overflowY: 'auto', padding: '8px' }}>
+                        {loadingConversations ? (
+                            <div style={{ color: '#64748b', padding: '20px', textAlign: 'center' }}>
+                                Loading conversations...
+                            </div>
+                        ) : conversations.length === 0 ? (
+                            <div style={{ color: '#64748b', padding: '20px', textAlign: 'center' }}>
+                                No conversations found
+                            </div>
+                        ) : (
+                            conversations.map((conv) => (
+                                <div
+                                    key={conv.senderId}
+                                    onClick={() => selectAndAnalyze(conv.senderId)}
+                                    style={{
+                                        padding: '12px',
+                                        marginBottom: '4px',
+                                        background: selectedSenderId === conv.senderId ? '#3b82f620' : '#0f172a',
+                                        border: selectedSenderId === conv.senderId ? '1px solid #3b82f6' : '1px solid transparent',
+                                        borderRadius: '8px',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.2s',
+                                    }}
+                                >
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                            <div style={{
+                                                color: '#fff',
+                                                fontWeight: 500,
+                                                fontSize: '14px',
+                                                whiteSpace: 'nowrap',
+                                                overflow: 'hidden',
+                                                textOverflow: 'ellipsis',
+                                            }}>
+                                                {conv.leadName || conv.senderId.slice(0, 20) + '...'}
+                                            </div>
+                                            <div style={{ color: '#64748b', fontSize: '12px', marginTop: '4px' }}>
+                                                {conv.messageCount} messages • {formatTimeAgo(conv.lastMessageAt)}
+                                            </div>
+                                        </div>
+                                        {conv.pipelineStage && (
+                                            <span style={{
+                                                padding: '2px 8px',
+                                                background: '#334155',
+                                                borderRadius: '10px',
+                                                fontSize: '10px',
+                                                color: '#94a3b8',
+                                                textTransform: 'capitalize',
+                                            }}>
+                                                {conv.pipelineStage}
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
                 </div>
 
-                {/* Analysis Summary */}
+                {/* Analysis Summary & Auto-Learn */}
                 {analysis && (
                     <div style={{
                         background: '#1e293b',
@@ -243,64 +296,80 @@ export default function ConversationAnalyzer() {
 
                         {/* Rating Counts */}
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px', marginBottom: '16px' }}>
-                            <div style={{ background: ratingConfig.excellent.bgColor, padding: '12px', borderRadius: '8px', textAlign: 'center' }}>
-                                <div style={{ color: ratingConfig.excellent.color, fontSize: '20px', fontWeight: 600 }}>{analysis.summary.excellentCount}</div>
-                                <div style={{ color: '#94a3b8', fontSize: '11px' }}>Excellent ♔</div>
+                            <div style={{ background: ratingConfig.excellent.bgColor, padding: '8px', borderRadius: '8px', textAlign: 'center' }}>
+                                <div style={{ color: ratingConfig.excellent.color, fontSize: '18px', fontWeight: 600 }}>{analysis.summary.excellentCount}</div>
+                                <div style={{ color: '#94a3b8', fontSize: '10px' }}>Excellent</div>
                             </div>
-                            <div style={{ background: ratingConfig.good.bgColor, padding: '12px', borderRadius: '8px', textAlign: 'center' }}>
-                                <div style={{ color: ratingConfig.good.color, fontSize: '20px', fontWeight: 600 }}>{analysis.summary.goodCount}</div>
-                                <div style={{ color: '#94a3b8', fontSize: '11px' }}>Good ✓</div>
+                            <div style={{ background: ratingConfig.good.bgColor, padding: '8px', borderRadius: '8px', textAlign: 'center' }}>
+                                <div style={{ color: ratingConfig.good.color, fontSize: '18px', fontWeight: 600 }}>{analysis.summary.goodCount}</div>
+                                <div style={{ color: '#94a3b8', fontSize: '10px' }}>Good</div>
                             </div>
-                            <div style={{ background: ratingConfig.questionable.bgColor, padding: '12px', borderRadius: '8px', textAlign: 'center' }}>
-                                <div style={{ color: ratingConfig.questionable.color, fontSize: '20px', fontWeight: 600 }}>{analysis.summary.questionableCount}</div>
-                                <div style={{ color: '#94a3b8', fontSize: '11px' }}>Questionable ?!</div>
+                            <div style={{ background: ratingConfig.mistake.bgColor, padding: '8px', borderRadius: '8px', textAlign: 'center' }}>
+                                <div style={{ color: ratingConfig.mistake.color, fontSize: '18px', fontWeight: 600 }}>{analysis.summary.mistakeCount}</div>
+                                <div style={{ color: '#94a3b8', fontSize: '10px' }}>Mistakes</div>
                             </div>
-                            <div style={{ background: ratingConfig.mistake.bgColor, padding: '12px', borderRadius: '8px', textAlign: 'center' }}>
-                                <div style={{ color: ratingConfig.mistake.color, fontSize: '20px', fontWeight: 600 }}>{analysis.summary.mistakeCount}</div>
-                                <div style={{ color: '#94a3b8', fontSize: '11px' }}>Mistake ?</div>
-                            </div>
-                            <div style={{ background: ratingConfig.blunder.bgColor, padding: '12px', borderRadius: '8px', textAlign: 'center', gridColumn: 'span 2' }}>
-                                <div style={{ color: ratingConfig.blunder.color, fontSize: '20px', fontWeight: 600 }}>{analysis.summary.blunderCount}</div>
-                                <div style={{ color: '#94a3b8', fontSize: '11px' }}>Blunder ??</div>
+                            <div style={{ background: ratingConfig.blunder.bgColor, padding: '8px', borderRadius: '8px', textAlign: 'center' }}>
+                                <div style={{ color: ratingConfig.blunder.color, fontSize: '18px', fontWeight: 600 }}>{analysis.summary.blunderCount}</div>
+                                <div style={{ color: '#94a3b8', fontSize: '10px' }}>Blunders</div>
                             </div>
                         </div>
 
-                        {/* Key Insights */}
-                        {analysis.summary.keyInsights.length > 0 && (
-                            <div style={{ marginBottom: '12px' }}>
-                                <div style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '8px', fontWeight: 600 }}>
-                                    💡 Key Insights
+                        {/* Auto-Learn Button */}
+                        {getMistakeCount() > 0 && (
+                            <button
+                                onClick={autoLearn}
+                                disabled={autoLearning}
+                                style={{
+                                    width: '100%',
+                                    padding: '12px',
+                                    background: autoLearning ? '#334155' : 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
+                                    border: 'none',
+                                    borderRadius: '8px',
+                                    color: '#fff',
+                                    fontSize: '14px',
+                                    fontWeight: 600,
+                                    cursor: autoLearning ? 'not-allowed' : 'pointer',
+                                    marginBottom: '12px',
+                                }}
+                            >
+                                {autoLearning ? '🧠 Learning...' : `🎓 Auto-Learn from ${getMistakeCount()} Mistakes`}
+                            </button>
+                        )}
+
+                        {/* Learn Result */}
+                        {learnResult && (
+                            <div style={{
+                                padding: '12px',
+                                background: learnResult.rulesAdded > 0 ? '#22c55e20' : '#64748b20',
+                                borderRadius: '8px',
+                                border: `1px solid ${learnResult.rulesAdded > 0 ? '#22c55e' : '#64748b'}`,
+                            }}>
+                                <div style={{ color: learnResult.rulesAdded > 0 ? '#22c55e' : '#94a3b8', fontWeight: 600, fontSize: '13px', marginBottom: '8px' }}>
+                                    {learnResult.rulesAdded > 0
+                                        ? `✓ Added ${learnResult.rulesAdded} rules to ML Sandbox`
+                                        : 'No new rules added (already exist or no patterns found)'}
                                 </div>
-                                <ul style={{ margin: 0, paddingLeft: '16px', color: '#e2e8f0', fontSize: '13px', lineHeight: '1.6' }}>
-                                    {analysis.summary.keyInsights.map((insight, idx) => (
-                                        <li key={idx}>{insight}</li>
-                                    ))}
-                                </ul>
+                                {learnResult.rules.length > 0 && (
+                                    <ul style={{ margin: 0, paddingLeft: '16px', color: '#e2e8f0', fontSize: '12px' }}>
+                                        {learnResult.rules.slice(0, 3).map((rule, idx) => (
+                                            <li key={idx} style={{ marginBottom: '4px' }}>{rule.rule.slice(0, 60)}...</li>
+                                        ))}
+                                    </ul>
+                                )}
                             </div>
                         )}
 
-                        {/* Improvement Areas */}
-                        {analysis.summary.improvementAreas.length > 0 && (
-                            <div>
-                                <div style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '8px', fontWeight: 600 }}>
-                                    🎯 Areas to Improve
+                        {/* Key Insights */}
+                        {analysis.summary.keyInsights.length > 0 && (
+                            <div style={{ marginTop: '12px' }}>
+                                <div style={{ color: '#94a3b8', fontSize: '11px', marginBottom: '6px', fontWeight: 600 }}>
+                                    💡 Key Insights
                                 </div>
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                                    {analysis.summary.improvementAreas.map((area, idx) => (
-                                        <span
-                                            key={idx}
-                                            style={{
-                                                padding: '4px 10px',
-                                                background: '#1e3a5f',
-                                                borderRadius: '12px',
-                                                fontSize: '12px',
-                                                color: '#60a5fa',
-                                            }}
-                                        >
-                                            {area}
-                                        </span>
+                                <ul style={{ margin: 0, paddingLeft: '14px', color: '#e2e8f0', fontSize: '12px', lineHeight: '1.5' }}>
+                                    {analysis.summary.keyInsights.slice(0, 3).map((insight, idx) => (
+                                        <li key={idx}>{insight}</li>
                                     ))}
-                                </div>
+                                </ul>
                             </div>
                         )}
                     </div>
@@ -355,7 +424,8 @@ export default function ConversationAnalyzer() {
                                     Select a conversation to analyze
                                 </div>
                                 <div style={{ fontSize: '14px' }}>
-                                    The AI will review each bot response and identify mistakes, missed opportunities, and suggest better alternatives.
+                                    Click any conversation on the left to analyze it.<br />
+                                    Then use Auto-Learn to improve the bot.
                                 </div>
                             </div>
                         )}
@@ -369,7 +439,7 @@ export default function ConversationAnalyzer() {
                                 height: '100%',
                                 color: '#94a3b8',
                             }}>
-                                <div style={{ fontSize: '48px', marginBottom: '16px', animation: 'pulse 2s infinite' }}>🧠</div>
+                                <div style={{ fontSize: '48px', marginBottom: '16px' }}>🧠</div>
                                 <div style={{ fontSize: '16px' }}>Analyzing conversation...</div>
                                 <div style={{ fontSize: '13px', color: '#64748b', marginTop: '8px' }}>
                                     This may take a few seconds
