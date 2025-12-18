@@ -274,7 +274,7 @@ async function applyDocumentChange(change: KnowledgeChange, useSandbox: boolean 
         let oldValueSnapshot: any = null;
         if (change.entityId) {
             const { data: current } = await supabase
-                .from('documents')
+                .from(tableName)
                 .select('*')
                 .eq('id', change.entityId)
                 .single();
@@ -289,7 +289,7 @@ async function applyDocumentChange(change: KnowledgeChange, useSandbox: boolean 
 
         if (change.changeType === 'add' && change.newValue) {
             const { data: inserted, error } = await supabase
-                .from('documents')
+                .from(tableName)
                 .insert({
                     content: change.newValue.content || change.newValue,
                     metadata: change.newValue.metadata || {},
@@ -318,7 +318,7 @@ async function applyDocumentChange(change: KnowledgeChange, useSandbox: boolean 
             }
 
             const { error } = await supabase
-                .from('documents')
+                .from(tableName)
                 .update({
                     content: change.newValue.content || change.newValue,
                     metadata: change.newValue.metadata || {},
@@ -329,7 +329,7 @@ async function applyDocumentChange(change: KnowledgeChange, useSandbox: boolean 
             return !error;
         } else if (change.changeType === 'delete' && change.entityId) {
             const { error } = await supabase
-                .from('documents')
+                .from(tableName)
                 .delete()
                 .eq('id', change.entityId);
             return !error;
@@ -352,7 +352,7 @@ async function applyRuleChange(change: KnowledgeChange, useSandbox: boolean = tr
         let oldValueSnapshot: any = null;
         if (change.entityId) {
             const { data: current } = await supabase
-                .from('bot_rules')
+                .from(tableName)
                 .select('*')
                 .eq('id', change.entityId)
                 .single();
@@ -368,7 +368,7 @@ async function applyRuleChange(change: KnowledgeChange, useSandbox: boolean = tr
 
         if (change.changeType === 'add' && change.newValue) {
             const { data: inserted, error } = await supabase
-                .from('bot_rules')
+                .from(tableName)
                 .insert({
                     rule: change.newValue.rule || change.newValue,
                     category: change.newValue.category || 'general',
@@ -398,7 +398,7 @@ async function applyRuleChange(change: KnowledgeChange, useSandbox: boolean = tr
             }
 
             const { error } = await supabase
-                .from('bot_rules')
+                .from(tableName)
                 .update({
                     rule: change.newValue.rule || change.newValue,
                     category: change.newValue.category,
@@ -410,7 +410,7 @@ async function applyRuleChange(change: KnowledgeChange, useSandbox: boolean = tr
             return !error;
         } else if (change.changeType === 'delete' && change.entityId) {
             const { error } = await supabase
-                .from('bot_rules')
+                .from(tableName)
                 .delete()
                 .eq('id', change.entityId);
             return !error;
@@ -431,7 +431,7 @@ async function applyInstructionChange(change: KnowledgeChange, useSandbox: boole
     try {
         // Get current instructions
         const { data: current } = await supabase
-            .from('bot_settings')
+            .from(tableName)
             .select('bot_instructions')
             .limit(1)
             .single();
@@ -448,7 +448,7 @@ async function applyInstructionChange(change: KnowledgeChange, useSandbox: boole
         }
 
         const { error } = await supabase
-            .from('bot_settings')
+            .from(tableName)
             .update({ bot_instructions: newInstructions })
             .limit(1);
 
@@ -478,7 +478,7 @@ async function applyPersonalityChange(change: KnowledgeChange, useSandbox: boole
         if (Object.keys(updates).length === 0) return false;
 
         const { error } = await supabase
-            .from('bot_settings')
+            .from(tableName)
             .update(updates)
             .limit(1);
 
@@ -498,7 +498,7 @@ async function applyGoalChange(change: KnowledgeChange, useSandbox: boolean = tr
     try {
         if (change.changeType === 'add' && change.newValue) {
             const { error } = await supabase
-                .from('bot_goals')
+                .from(tableName)
                 .insert({
                     goal_name: change.newValue.goalName || change.newValue.name || change.newValue,
                     goal_description: change.newValue.goalDescription || change.newValue.description || '',
@@ -519,14 +519,14 @@ async function applyGoalChange(change: KnowledgeChange, useSandbox: boolean = tr
             if (change.newValue.stopOnCompletion !== undefined) updates.stop_on_completion = change.newValue.stopOnCompletion;
 
             const { error } = await supabase
-                .from('bot_goals')
+                .from(tableName)
                 .update(updates)
                 .eq('id', change.entityId);
             console.log('[ML Knowledge] Updated bot goal:', change.entityId);
             return !error;
         } else if (change.changeType === 'delete' && change.entityId) {
             const { error } = await supabase
-                .from('bot_goals')
+                .from(tableName)
                 .delete()
                 .eq('id', change.entityId);
             console.log('[ML Knowledge] Deleted bot goal:', change.entityId);
@@ -548,7 +548,7 @@ async function applyConversationFlowChange(change: KnowledgeChange, useSandbox: 
     try {
         if (change.changeType === 'update' && change.newValue) {
             const { error } = await supabase
-                .from('bot_settings')
+                .from(tableName)
                 .update({
                     conversation_flow: change.newValue.flow || change.newValue
                 })
@@ -572,7 +572,7 @@ async function applyCategoryChange(change: KnowledgeChange, useSandbox: boolean 
     try {
         if (change.changeType === 'add' && change.newValue) {
             const { data, error } = await supabase
-                .from('knowledge_categories')
+                .from(tableName)
                 .insert({
                     name: change.newValue.name || change.newValue,
                     type: change.newValue.type || 'general',
@@ -584,13 +584,14 @@ async function applyCategoryChange(change: KnowledgeChange, useSandbox: boolean 
             return !error;
         } else if (change.changeType === 'delete' && change.entityId) {
             // First, move documents in this category to uncategorized (null)
+            const docTableName = useSandbox ? 'ml_sandbox_documents' : 'documents';
             await supabase
-                .from('documents')
+                .from(docTableName)
                 .update({ category_id: null })
                 .eq('category_id', change.entityId);
 
             const { error } = await supabase
-                .from('knowledge_categories')
+                .from(tableName)
                 .delete()
                 .eq('id', change.entityId);
             console.log('[ML Knowledge] Deleted category:', change.entityId);
@@ -617,7 +618,7 @@ async function applyDocumentMerge(change: KnowledgeChange, useSandbox: boolean =
 
         // Fetch all source documents
         const { data: sourceDocuments, error: fetchError } = await supabase
-            .from('documents')
+            .from(tableName)
             .select('*')
             .in('id', change.mergeSourceIds);
 
@@ -636,7 +637,7 @@ async function applyDocumentMerge(change: KnowledgeChange, useSandbox: boolean =
 
         // Create the merged document
         const { data: newDoc, error: insertError } = await supabase
-            .from('documents')
+            .from(tableName)
             .insert({
                 content: mergedContent,
                 metadata: {
@@ -658,7 +659,7 @@ async function applyDocumentMerge(change: KnowledgeChange, useSandbox: boolean =
 
         // Delete the source documents
         const { error: deleteError } = await supabase
-            .from('documents')
+            .from(tableName)
             .delete()
             .in('id', change.mergeSourceIds);
 
