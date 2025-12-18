@@ -97,6 +97,24 @@ export async function PATCH(req: Request) {
                     console.error('Error triggering workflows:', err);
                 })
             );
+
+            // Get stage name and trigger auto-analysis if it's a final stage (lost/won/closed)
+            const { data: newStage } = await supabase
+                .from('pipeline_stages')
+                .select('name')
+                .eq('id', stageId)
+                .single();
+
+            if (newStage?.name) {
+                const { triggerAnalysisOnStageChange } = await import('@/app/lib/conversationAnalysisService');
+
+                // Run in background - don't await
+                waitUntil(
+                    triggerAnalysisOnStageChange(leadId, lead.sender_id, newStage.name).catch(err => {
+                        console.error('Error triggering auto-analysis:', err);
+                    })
+                );
+            }
         }
 
         return NextResponse.json({ lead: data });

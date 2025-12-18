@@ -353,6 +353,17 @@ Choose the most appropriate stage based on the customer's intent, interest level
             } catch (workflowError) {
                 console.error('Error triggering workflows:', workflowError);
             }
+
+            // Trigger automatic conversation analysis for final stages (lost/won/closed)
+            try {
+                const { triggerAnalysisOnStageChange } = await import('./conversationAnalysisService');
+                // Fire and forget - don't await
+                triggerAnalysisOnStageChange(lead.id, senderId, matchedStage.name).catch(err => {
+                    console.error('Error in auto-analysis:', err);
+                });
+            } catch (analysisError) {
+                console.error('Error importing analysis service:', analysisError);
+            }
         } else {
             // Just update last analyzed timestamp
             await supabase

@@ -19,6 +19,14 @@ const ANALYSIS_MODELS = [
     'meta/llama-3.1-8b-instruct',
 ];
 
+// Stage names that trigger automatic conversation analysis
+const ANALYSIS_TRIGGER_STAGES = [
+    'lost', 'won', 'closed',
+    'deal lost', 'deal won', 'deal closed',
+    'converted', 'completed', 'finished',
+    'cancelled', 'rejected'
+];
+
 // Types
 export interface MessageAnalysis {
     rating: 'excellent' | 'good' | 'questionable' | 'mistake' | 'blunder';
@@ -395,5 +403,98 @@ IMPORTANT:
                 phone: lead.phone,
             } : undefined,
         };
+    }
+}
+
+/**
+ * Check if a stage name should trigger automatic conversation analysis
+ */
+export function isAnalysisTriggerStage(stageName: string): boolean {
+    const normalized = stageName.toLowerCase().trim();
+    return ANALYSIS_TRIGGER_STAGES.some(trigger =>
+        normalized.includes(trigger) || trigger.includes(normalized)
+    );
+}
+
+/**
+ * Store conversation analysis results in the database
+ */
+async function storeConversationAnalysis(
+    leadId: string,
+    analysis: ConversationAnalysis,
+    stageName: string
+): Promise<boolean> {
+    try {
+        // First, check if we have a lead_conversation_analysis table
+        // If not, store on the lead record directly
+        const { error: insertError } = await supabase
+            .from('leads')
+            .update({
+                conversation_analysis: {
+                    overallScore: analysis.summary.overallScore,
+                    excellentCount: analysis.summary.excellentCount,
+                    goodCount: analysis.summary.goodCount,
+                    questionableCount: analysis.summary.questionableCount,
+                    mistakeCount: analysis.summary.mistakeCount,
+                    blunderCount: analysis.summary.blunderCount,
+                    keyInsights: analysis.summary.keyInsights,
+                    improvementAreas: analysis.summary.improvementAreas,
+                    analyzedAt: new Date().toISOString(),
+                    triggerStage: stageName,
+                    messageCount: analysis.messages.length,
+                },
+            })
+            .eq('id', leadId);
+
+        if (insertError) {
+            console.error('[AutoAnalysis] Error storing analysis:', insertError);
+            return false;
+        }
+
+        console.log(`[AutoAnalysis] Stored analysis for lead ${leadId} - Score: ${analysis.summary.overallScore}`);
+        return true;
+    } catch (error) {
+        console.error('[AutoAnalysis] Error storing analysis:', error);
+        return false;
+    }
+}
+
+/**
+ * Trigger automatic conversation analysis when a lead moves to a final stage
+ * Call this in background (fire-and-forget) when stage changes
+ */
+export async function triggerAnalysisOnStageChange(
+    leadId: string,
+    senderId: string,
+    stageName: string
+): Promise<void> {
+    try {
+        // Check if this stage should trigger analysis
+        if (!isAnalysisTriggerStage(stageName)) {
+            console.log(`[AutoAnalysis] Stage "${stageName}" does not trigger analysis`);
+            return;
+        }
+
+        console.log(`[AutoAnalysis] Triggered for lead ${leadId} - Stage: "${stageName}"`);
+
+        // Run the analysis
+        const analysis = await analyzeConversation(senderId, 50);
+
+        if (analysis.messages.length === 0) {
+            console.log(`[AutoAnalysis] No messages to analyze for lead ${leadId}`);
+            return;
+        }
+
+        // Store the results
+        await storeConversationAnalysis(leadId, analysis, stageName);
+
+        console.log(`[AutoAnalysis] Completed for lead ${leadId}:`, {
+            score: analysis.summary.overallScore,
+            excellent: analysis.summary.excellentCount,
+            mistakes: analysis.summary.mistakeCount,
+            blunders: analysis.summary.blunderCount,
+        });
+    } catch (error) {
+        console.error('[AutoAnalysis] Error:', error);
     }
 }
