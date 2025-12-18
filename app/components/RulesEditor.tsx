@@ -1211,7 +1211,7 @@ export default function RulesEditor() {
                     <div className="bg-white rounded-[24px] border border-gray-200/60 shadow-sm hover:shadow-md transition-shadow overflow-hidden">
                         <div className="p-6 border-b border-gray-100 bg-white flex items-center justify-between">
                             <div>
-                                <h3 className="text-xl font-normal text-gray-900">Bot Rules</h3>
+                                <h3 className="text-xl font-normal text-gray-900">Bot Settings</h3>
                                 <p className="text-sm text-gray-400 mt-1">Specific rules checked before every response</p>
                             </div>
                             <span className="bg-gray-100 text-gray-600 px-3 py-1 rounded-full text-xs font-semibold tracking-wide">

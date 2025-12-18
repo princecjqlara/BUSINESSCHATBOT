@@ -100,7 +100,7 @@ export default function BotConfigurationAIAnalyzer({
         try {
             await onApplySuggestion(suggestion);
             setAppliedSuggestions(prev => new Set([...prev, suggestionKey]));
-            
+
             // Refresh data after applying
             setTimeout(() => {
                 onRefresh();
@@ -135,7 +135,7 @@ export default function BotConfigurationAIAnalyzer({
             case 'bot_goals':
                 return 'Bot Goals';
             case 'bot_rules':
-                return 'Bot Rules';
+                return 'Bot Settings';
             case 'conversation_style':
                 return 'Conversation Style';
             case 'tone_personality':
@@ -283,13 +283,12 @@ export default function BotConfigurationAIAnalyzer({
                                             return (
                                                 <div
                                                     key={sIndex}
-                                                    className={`p-3 rounded-lg border ${
-                                                        suggestion.action === 'edit'
+                                                    className={`p-3 rounded-lg border ${suggestion.action === 'edit'
                                                             ? 'bg-yellow-50 border-yellow-200'
                                                             : suggestion.action === 'remove'
-                                                            ? 'bg-red-50 border-red-200'
-                                                            : 'bg-green-50 border-green-200'
-                                                    }`}
+                                                                ? 'bg-red-50 border-red-200'
+                                                                : 'bg-green-50 border-green-200'
+                                                        }`}
                                                 >
                                                     <div className="flex items-start justify-between mb-2">
                                                         <div className="flex-1">

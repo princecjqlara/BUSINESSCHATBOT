@@ -106,7 +106,7 @@ export default function SetupPage() {
         { key: 'flow', title: 'Conversation Flow', description: 'How should the conversation proceed?' },
         { key: 'tone', title: 'Tone & Personality', description: 'How should the bot sound?' },
         { key: 'style', title: 'Conversation Style', description: 'How should the bot interact in each reply?' },
-        { key: 'rules', title: 'Bot Rules', description: 'Guardrails and safety rules to enforce every time.' },
+        { key: 'rules', title: 'Bot Settings', description: 'Guardrails and safety rules to enforce every time.' },
         { key: 'extras', title: 'Additional Requests', description: 'Any special instructions or custom features.' },
     ];
 

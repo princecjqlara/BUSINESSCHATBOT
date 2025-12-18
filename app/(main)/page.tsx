@@ -203,7 +203,7 @@ export default function Home() {
                 }`}
             >
               <Bot size={16} />
-              Bot Rules
+              Bot Settings
             </button>
             {selectedCategory && (
               <span className="ml-2 text-sm text-gray-500">

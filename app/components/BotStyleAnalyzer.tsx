@@ -49,7 +49,7 @@ export default function BotStyleAnalyzer({ onSuggestionApplied }: BotStyleAnalyz
 
     const handleAnalyze = async () => {
         const validMessages = sampleMessages.filter(msg => msg.trim().length > 0);
-        
+
         if (validMessages.length === 0) {
             alert('Please enter at least one desired bot reply or follow-up message');
             return;
@@ -65,7 +65,7 @@ export default function BotStyleAnalyzer({ onSuggestionApplied }: BotStyleAnalyz
             const response = await fetch('/api/analyze-bot-style', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
+                body: JSON.stringify({
                     desiredMessages: validMessages,
                     messageCount: validMessages.length,
                     messageType: messageType
@@ -127,18 +127,18 @@ export default function BotStyleAnalyzer({ onSuggestionApplied }: BotStyleAnalyz
 
             if (data.success) {
                 setApplied(new Set([...applied, index.toString()]));
-                
+
                 // Show success message with type label
-                const typeLabel = suggestion.type === 'rule' 
-                    ? 'Bot Rules' 
-                    : suggestion.type === 'instruction' 
-                    ? 'Instructions' 
-                    : suggestion.type === 'knowledge'
-                    ? 'Knowledge Base'
-                    : 'Personality Settings';
-                
+                const typeLabel = suggestion.type === 'rule'
+                    ? 'Bot Settings'
+                    : suggestion.type === 'instruction'
+                        ? 'Instructions'
+                        : suggestion.type === 'knowledge'
+                            ? 'Knowledge Base'
+                            : 'Personality Settings';
+
                 alert(`✅ Successfully added to ${typeLabel}!`);
-                
+
                 // Mark as applied - no page reload to preserve user input
                 // Notify parent component to refresh if needed
                 if (onSuggestionApplied) {
@@ -206,10 +206,10 @@ export default function BotStyleAnalyzer({ onSuggestionApplied }: BotStyleAnalyz
             // Show summary
             if (successCount > 0) {
                 alert(`✅ Successfully applied ${successCount} suggestion${successCount !== 1 ? 's' : ''}${errorCount > 0 ? `\n❌ ${errorCount} failed` : ''}`);
-                
+
                 // Clear selection after successful apply - no page reload to preserve user input
                 setSelectedSuggestions(new Set());
-                
+
                 // Notify parent component to refresh if needed
                 if (onSuggestionApplied) {
                     onSuggestionApplied();
@@ -292,11 +292,10 @@ export default function BotStyleAnalyzer({ onSuggestionApplied }: BotStyleAnalyz
                 <div className="flex gap-2">
                     <button
                         onClick={() => setMessageType('messaging')}
-                        className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                            messageType === 'messaging'
+                        className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${messageType === 'messaging'
                                 ? 'bg-purple-50 text-purple-700 border-2 border-purple-300 shadow-sm'
                                 : 'bg-gray-50 text-gray-600 border-2 border-gray-200 hover:border-gray-300'
-                        }`}
+                            }`}
                     >
                         <div className="flex items-center justify-center gap-2">
                             <MessageSquare size={16} />
@@ -305,11 +304,10 @@ export default function BotStyleAnalyzer({ onSuggestionApplied }: BotStyleAnalyz
                     </button>
                     <button
                         onClick={() => setMessageType('followup')}
-                        className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                            messageType === 'followup'
+                        className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${messageType === 'followup'
                                 ? 'bg-blue-50 text-blue-700 border-2 border-blue-300 shadow-sm'
                                 : 'bg-gray-50 text-gray-600 border-2 border-gray-200 hover:border-gray-300'
-                        }`}
+                            }`}
                     >
                         <div className="flex items-center justify-center gap-2">
                             <ArrowRight size={16} />
@@ -318,7 +316,7 @@ export default function BotStyleAnalyzer({ onSuggestionApplied }: BotStyleAnalyz
                     </button>
                 </div>
                 <p className="text-xs text-gray-500 mt-2">
-                    {messageType === 'followup' 
+                    {messageType === 'followup'
                         ? 'These are follow-up messages sent after initial contact or when re-engaging customers'
                         : 'These are regular conversation messages during active chats'}
                 </p>
@@ -338,7 +336,7 @@ export default function BotStyleAnalyzer({ onSuggestionApplied }: BotStyleAnalyz
                         <span>Add Sample</span>
                     </button>
                 </div>
-                
+
                 <div className="space-y-3">
                     {sampleMessages.map((message, index) => (
                         <div key={index} className="relative">
@@ -350,7 +348,7 @@ export default function BotStyleAnalyzer({ onSuggestionApplied }: BotStyleAnalyz
                                     <textarea
                                         value={message}
                                         onChange={(e) => handleSampleChange(index, e.target.value)}
-                                        placeholder={messageType === 'followup' 
+                                        placeholder={messageType === 'followup'
                                             ? `Sample ${index + 1}: E.g., 'Hey! 👋 Just following up - did you have any questions about our products? I'm here to help!'`
                                             : `Sample ${index + 1}: E.g., 'Hey! 👋 Saw you checking us out. Quick question - what caught your attention? We have some great deals right now!'`}
                                         className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 text-gray-900 resize-y min-h-[100px]"
@@ -369,7 +367,7 @@ export default function BotStyleAnalyzer({ onSuggestionApplied }: BotStyleAnalyz
                         </div>
                     ))}
                 </div>
-                
+
                 <p className="text-xs text-gray-500 mt-3">
                     Enter multiple examples of how you want your bot to respond {messageType === 'followup' ? 'in follow-up scenarios' : 'during regular conversations'}. AI will analyze all samples together to better understand the style and create comprehensive rules, instructions, or knowledge base entries.
                 </p>
@@ -420,11 +418,10 @@ export default function BotStyleAnalyzer({ onSuggestionApplied }: BotStyleAnalyz
                             )}
                             <button
                                 onClick={() => setBulkMode(!bulkMode)}
-                                className={`flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
-                                    bulkMode
+                                className={`flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${bulkMode
                                         ? 'bg-purple-100 text-purple-700 border border-purple-300'
                                         : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                                }`}
+                                    }`}
                             >
                                 <Layers size={14} />
                                 <span>Bulk Mode</span>
@@ -454,13 +451,12 @@ export default function BotStyleAnalyzer({ onSuggestionApplied }: BotStyleAnalyz
                     {suggestions.map((suggestion, index) => (
                         <div
                             key={index}
-                            className={`border-2 rounded-xl p-5 transition-all ${
-                                applied.has(index.toString())
+                            className={`border-2 rounded-xl p-5 transition-all ${applied.has(index.toString())
                                     ? 'bg-green-50 border-green-300'
                                     : selectedSuggestions.has(index)
-                                    ? 'bg-purple-50 border-purple-300'
-                                    : 'bg-white border-gray-200 hover:border-gray-300'
-                            }`}
+                                        ? 'bg-purple-50 border-purple-300'
+                                        : 'bg-white border-gray-200 hover:border-gray-300'
+                                }`}
                         >
                             <div className="flex items-start justify-between gap-4 mb-3">
                                 <div className="flex items-center gap-3 flex-1">

@@ -162,7 +162,7 @@ export async function POST(req: Request) {
 You will analyze:
 1. **Conversation Flow** - The step-by-step structure and progression of conversations
 2. **Bot Goals** - Specific objectives the bot should achieve during conversations
-3. **Bot Rules** - Specific behavioral rules checked before every response
+3. **Bot Settings** - Specific behavioral rules checked before every response
 4. **Conversation Style Instructions** - How the bot should converse (tone, language, style)
 5. **Tone & Personality** - The overall personality and tone of the bot
 
