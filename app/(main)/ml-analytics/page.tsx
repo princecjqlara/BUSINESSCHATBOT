@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import Sidebar from '@/app/components/Sidebar';
 
 interface OverviewData {
     period: { startDate: string; endDate: string; days: number };
@@ -97,9 +96,8 @@ export default function MLAnalyticsPage() {
     };
 
     return (
-        <div style={{ display: 'flex', minHeight: '100vh', background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)' }}>
-            <Sidebar />
-            <main style={{ flex: 1, padding: '24px', marginLeft: '256px' }}>
+        <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', overflow: 'auto' }}>
+            <main style={{ padding: '24px' }}>
                 {/* Header */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
                     <div>
