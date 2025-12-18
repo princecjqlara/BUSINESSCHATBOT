@@ -253,15 +253,22 @@ async function syncFromProduction(type: string) {
 
         // Sync documents
         if (type === 'all' || type === 'documents') {
-            // Clear existing sandbox documents - use gte instead of neq for more reliable deletion
-            const { error: deleteDocsError } = await supabase
+            // Clear existing sandbox documents - fetch all and delete by ID for reliability
+            const { data: existingDocs } = await supabase
                 .from('ml_sandbox_documents')
-                .delete()
-                .gte('created_at', '1970-01-01');
+                .select('id');
 
-            if (deleteDocsError) {
-                console.error('[ML Sandbox] Error clearing sandbox documents:', deleteDocsError);
-                errors.push(`Document clear error: ${deleteDocsError.message}`);
+            if (existingDocs && existingDocs.length > 0) {
+                const docIds = existingDocs.map((d: any) => d.id);
+                const { error: deleteDocsError } = await supabase
+                    .from('ml_sandbox_documents')
+                    .delete()
+                    .in('id', docIds);
+
+                if (deleteDocsError) {
+                    console.error('[ML Sandbox] Error clearing sandbox documents:', deleteDocsError);
+                    errors.push(`Document clear error: ${deleteDocsError.message}`);
+                }
             }
 
             const { data: prodDocs, error: docsError } = await supabase.from('documents').select('*');
@@ -270,12 +277,14 @@ async function syncFromProduction(type: string) {
                 console.error('[ML Sandbox] Error fetching production documents:', docsError);
                 errors.push(`Documents fetch error: ${docsError.message}`);
             } else if (prodDocs && prodDocs.length > 0) {
+                // Note: production documents.id is BIGSERIAL, sandbox production_id is UUID
+                // We store the production ID in metadata instead since types don't match
                 const sandboxDocs = prodDocs.map((doc: any) => ({
                     content: doc.content,
-                    metadata: doc.metadata,
+                    metadata: { ...doc.metadata, production_id: doc.id },
                     category_id: doc.category_id,
                     media_urls: doc.media_urls,
-                    production_id: doc.id,
+                    // production_id is UUID but production doc.id is BIGSERIAL - skip this field
                     synced_from_production_at: now,
                 }));
                 const { error: insertDocsError } = await supabase.from('ml_sandbox_documents').insert(sandboxDocs);
@@ -293,7 +302,7 @@ async function syncFromProduction(type: string) {
 
         // Sync rules
         if (type === 'all' || type === 'rules') {
-            // Clear existing sandbox rules - use gt for serial IDs
+            // Clear existing sandbox rules - sandbox uses SERIAL, so gt(0) works
             const { error: deleteRulesError } = await supabase
                 .from('ml_sandbox_bot_rules')
                 .delete()
@@ -310,12 +319,14 @@ async function syncFromProduction(type: string) {
                 console.error('[ML Sandbox] Error fetching production rules:', rulesError);
                 errors.push(`Rules fetch error: ${rulesError.message}`);
             } else if (prodRules && prodRules.length > 0) {
+                // Note: production bot_rules.id is UUID, sandbox production_id is INTEGER
+                // Store the UUID string reference in a different way - skip production_id mapping
                 const sandboxRules = prodRules.map((rule: any) => ({
                     rule: rule.rule,
                     category: rule.category,
                     priority: rule.priority,
                     enabled: rule.enabled,
-                    production_id: rule.id,
+                    // production_id is INTEGER but production rule.id is UUID - skip this field
                     synced_from_production_at: now,
                 }));
                 const { error: insertRulesError } = await supabase.from('ml_sandbox_bot_rules').insert(sandboxRules);
@@ -333,15 +344,22 @@ async function syncFromProduction(type: string) {
 
         // Sync goals
         if (type === 'all' || type === 'goals') {
-            // Clear existing sandbox goals
-            const { error: deleteGoalsError } = await supabase
+            // Clear existing sandbox goals - fetch all and delete by ID
+            const { data: existingGoals } = await supabase
                 .from('ml_sandbox_bot_goals')
-                .delete()
-                .gte('created_at', '1970-01-01');
+                .select('id');
 
-            if (deleteGoalsError) {
-                console.error('[ML Sandbox] Error clearing sandbox goals:', deleteGoalsError);
-                errors.push(`Goals clear error: ${deleteGoalsError.message}`);
+            if (existingGoals && existingGoals.length > 0) {
+                const goalIds = existingGoals.map((g: any) => g.id);
+                const { error: deleteGoalsError } = await supabase
+                    .from('ml_sandbox_bot_goals')
+                    .delete()
+                    .in('id', goalIds);
+
+                if (deleteGoalsError) {
+                    console.error('[ML Sandbox] Error clearing sandbox goals:', deleteGoalsError);
+                    errors.push(`Goals clear error: ${deleteGoalsError.message}`);
+                }
             }
 
             const { data: prodGoals, error: goalsError } = await supabase.from('bot_goals').select('*');
@@ -350,6 +368,7 @@ async function syncFromProduction(type: string) {
                 console.error('[ML Sandbox] Error fetching production goals:', goalsError);
                 errors.push(`Goals fetch error: ${goalsError.message}`);
             } else if (prodGoals && prodGoals.length > 0) {
+                // Both production and sandbox use UUID for goals, so production_id mapping works
                 const sandboxGoals = prodGoals.map((goal: any) => ({
                     goal_name: goal.goal_name,
                     goal_description: goal.goal_description,

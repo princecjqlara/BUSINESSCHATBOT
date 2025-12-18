@@ -319,7 +319,7 @@ export default function MLSandboxPage() {
     };
 
     return (
-        <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', overflow: 'auto' }}>
+        <div style={{ minHeight: '100vh', background: '#ffffff', overflow: 'auto' }}>
             <main style={{ padding: '24px', maxWidth: '1400px', margin: '0 auto' }}>
                 {/* Header */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>

@@ -97,7 +97,7 @@ export default function MLAnalyticsPage() {
     };
 
     return (
-        <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', overflow: 'auto' }}>
+        <div style={{ minHeight: '100vh', background: '#ffffff', overflow: 'auto' }}>
             <main style={{ padding: '24px' }}>
                 {/* Header */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>

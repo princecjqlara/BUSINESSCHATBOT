@@ -260,6 +260,7 @@ export async function processConversationLearning(
 
 /**
  * Get all conversations for auto-learning (only from real leads in pipeline)
+ * Falls back to fetching conversations directly if no leads are found
  */
 export async function getConversationsForLearning(limit: number = 50) {
     // First, get all leads that are in the pipeline
@@ -270,45 +271,102 @@ export async function getConversationsForLearning(limit: number = 50) {
         .order('created_at', { ascending: false })
         .limit(limit * 2); // Get more leads to filter
 
-    if (leadsError || !leads || leads.length === 0) {
-        console.error('[AutoLearn] Error fetching leads or no leads found:', leadsError);
-        return [];
-    }
-
-    // Filter out test sender IDs
-    const validLeads = leads.filter((lead: any) => {
+    // Filter out test sender IDs from leads
+    const validLeads = (leads || []).filter((lead: any) => {
         const senderId = lead.sender_id?.toLowerCase() || '';
         return !senderId.startsWith('web_test') &&
             !senderId.startsWith('test_') &&
             !senderId.startsWith('test');
     });
 
-    if (validLeads.length === 0) {
-        console.log('[AutoLearn] No valid leads found after filtering test accounts');
+    // If we have valid leads, get their conversations
+    if (validLeads.length > 0) {
+        const senderIds = validLeads.map((l: any) => l.sender_id);
+        const { data: conversationStats } = await supabase
+            .from('conversations')
+            .select('sender_id, created_at')
+            .in('sender_id', senderIds)
+            .order('created_at', { ascending: false });
+
+        // Group conversations by sender_id
+        const senderMap = new Map<string, { count: number; lastMessageAt: string }>();
+        for (const conv of conversationStats || []) {
+            if (!senderMap.has(conv.sender_id)) {
+                senderMap.set(conv.sender_id, { count: 1, lastMessageAt: conv.created_at });
+            } else {
+                const existing = senderMap.get(conv.sender_id)!;
+                existing.count++;
+            }
+        }
+
+        // Build result - only include leads with conversations
+        const results: Array<{
+            senderId: string;
+            leadId: string | null;
+            leadName: string | null;
+            pipelineStage: string | null;
+            messageCount: number;
+            lastMessageAt: string;
+        }> = [];
+
+        for (const lead of validLeads) {
+            if (results.length >= limit) break;
+
+            const convStats = senderMap.get(lead.sender_id);
+            if (!convStats || convStats.count === 0) continue; // Skip leads without conversations
+
+            results.push({
+                senderId: lead.sender_id,
+                leadId: lead.id,
+                leadName: lead.name,
+                pipelineStage: lead.pipeline_stage,
+                messageCount: convStats.count,
+                lastMessageAt: convStats.lastMessageAt,
+            });
+        }
+
+        if (results.length > 0) {
+            console.log(`[AutoLearn] Found ${results.length} valid conversations from pipeline leads`);
+            return results;
+        }
+    }
+
+    // FALLBACK: If no lead-linked conversations, fetch directly from conversations table
+    console.log('[AutoLearn] No lead-linked conversations found, falling back to direct conversation fetch');
+
+    const { data: allConversations, error: convError } = await supabase
+        .from('conversations')
+        .select('sender_id, created_at')
+        .order('created_at', { ascending: false });
+
+    if (convError || !allConversations || allConversations.length === 0) {
+        console.log('[AutoLearn] No conversations found in database');
         return [];
     }
 
-    // Get conversation counts for these leads
-    const senderIds = validLeads.map((l: any) => l.sender_id);
-    const { data: conversationStats } = await supabase
-        .from('conversations')
-        .select('sender_id, created_at')
-        .in('sender_id', senderIds)
-        .order('created_at', { ascending: false });
+    // Group by sender_id and filter out test conversations
+    const conversationMap = new Map<string, { count: number; lastMessageAt: string }>();
+    for (const conv of allConversations) {
+        const senderId = conv.sender_id?.toLowerCase() || '';
 
-    // Group conversations by sender_id
-    const senderMap = new Map<string, { count: number; lastMessageAt: string }>();
-    for (const conv of conversationStats || []) {
-        if (!senderMap.has(conv.sender_id)) {
-            senderMap.set(conv.sender_id, { count: 1, lastMessageAt: conv.created_at });
+        // Filter out test sender IDs
+        if (senderId.startsWith('web_test') ||
+            senderId.startsWith('test_') ||
+            senderId.startsWith('test') ||
+            senderId === 'web_default') {
+            continue;
+        }
+
+        if (!conversationMap.has(conv.sender_id)) {
+            conversationMap.set(conv.sender_id, { count: 1, lastMessageAt: conv.created_at });
         } else {
-            const existing = senderMap.get(conv.sender_id)!;
+            const existing = conversationMap.get(conv.sender_id)!;
             existing.count++;
         }
     }
 
-    // Build result - only include leads with conversations
-    const results: Array<{
+    // Build results from orphan conversations (no matching lead)
+    const orphanResults: Array<{
         senderId: string;
         leadId: string | null;
         leadName: string | null;
@@ -317,23 +375,23 @@ export async function getConversationsForLearning(limit: number = 50) {
         lastMessageAt: string;
     }> = [];
 
-    for (const lead of validLeads) {
-        if (results.length >= limit) break;
+    const sortedEntries = Array.from(conversationMap.entries())
+        .sort((a, b) => new Date(b[1].lastMessageAt).getTime() - new Date(a[1].lastMessageAt).getTime());
 
-        const convStats = senderMap.get(lead.sender_id);
-        if (!convStats || convStats.count === 0) continue; // Skip leads without conversations
+    for (const [senderId, stats] of sortedEntries) {
+        if (orphanResults.length >= limit) break;
 
-        results.push({
-            senderId: lead.sender_id,
-            leadId: lead.id,
-            leadName: lead.name,
-            pipelineStage: lead.pipeline_stage,
-            messageCount: convStats.count,
-            lastMessageAt: convStats.lastMessageAt,
+        orphanResults.push({
+            senderId: senderId,
+            leadId: null,
+            leadName: null, // Will display sender ID in UI
+            pipelineStage: null,
+            messageCount: stats.count,
+            lastMessageAt: stats.lastMessageAt,
         });
     }
 
-    console.log(`[AutoLearn] Found ${results.length} valid conversations from pipeline leads`);
-    return results;
+    console.log(`[AutoLearn] Found ${orphanResults.length} conversations (no matching leads)`);
+    return orphanResults;
 }
 
