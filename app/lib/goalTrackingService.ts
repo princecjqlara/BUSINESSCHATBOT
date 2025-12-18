@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { disableBotForLead } from './messengerService';
 import OpenAI from 'openai';
 
 const client = new OpenAI({
@@ -286,14 +287,38 @@ export async function checkAndRecordGoalCompletions(
             botResponse
         );
 
-        // Record each completion
+        // Record each completion and check for stop_on_completion goals
         for (const completion of completions) {
-            await recordGoalCompletion(
+            const recorded = await recordGoalCompletion(
                 completion.goalId,
                 leadId,
                 senderId,
                 completion.context
             );
+
+            // If this goal was successfully recorded, check if it triggers bot disable
+            if (recorded) {
+                const completedGoal = activeGoals.find(g => g.id === completion.goalId);
+                if (completedGoal?.stop_on_completion) {
+                    // Disable bot for this lead when stop_on_completion goal is achieved
+                    if (leadId) {
+                        await disableBotForLead(leadId, `Goal completed: ${completedGoal.goal_name}`);
+                        console.log(`[Goal Tracking] Bot disabled for lead ${leadId} - Goal "${completedGoal.goal_name}" completed with stop_on_completion flag`);
+                    } else if (senderId) {
+                        // Try to find lead by sender_id and disable
+                        const { data: lead } = await supabase
+                            .from('leads')
+                            .select('id')
+                            .eq('sender_id', senderId)
+                            .single();
+
+                        if (lead) {
+                            await disableBotForLead(lead.id, `Goal completed: ${completedGoal.goal_name}`);
+                            console.log(`[Goal Tracking] Bot disabled for lead ${lead.id} (sender: ${senderId}) - Goal "${completedGoal.goal_name}" completed with stop_on_completion flag`);
+                        }
+                    }
+                }
+            }
         }
 
         if (completions.length > 0) {

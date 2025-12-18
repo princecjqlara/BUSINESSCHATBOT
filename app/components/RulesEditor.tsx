@@ -9,6 +9,7 @@ import BotConfigurationAIAnalyzer from './BotConfigurationAIAnalyzer';
 
 // Available AI models for selection
 const AI_MODELS = [
+    { id: 'openai/gpt-oss-120b', name: 'GPT OSS 120B', description: 'Recommended - Best overall quality' },
     { id: 'deepseek-ai/deepseek-v3.1', name: 'DeepSeek V3.1', description: 'Best for rule following & reasoning' },
     { id: 'qwen/qwen3-235b-a22b', name: 'Qwen3 235B', description: 'Highest quality responses' },
     { id: 'meta/llama-3.1-8b-instruct', name: 'Llama 3.1 8B', description: 'Fast and reliable' },
