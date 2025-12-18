@@ -209,18 +209,22 @@ async function getAllSandboxData() {
 async function syncFromProduction(type: string) {
     const now = new Date().toISOString();
     let itemsSynced = 0;
+    const errors: string[] = [];
 
     try {
         // Sync settings
         if (type === 'all' || type === 'settings') {
-            const { data: prodSettings } = await supabase
+            const { data: prodSettings, error: settingsError } = await supabase
                 .from('bot_settings')
                 .select('*')
                 .limit(1)
                 .single();
 
-            if (prodSettings) {
-                await supabase
+            if (settingsError) {
+                console.error('[ML Sandbox] Error fetching production settings:', settingsError);
+                errors.push(`Settings fetch error: ${settingsError.message}`);
+            } else if (prodSettings) {
+                const { error: upsertError } = await supabase
                     .from('ml_sandbox_bot_settings')
                     .upsert({
                         id: 1,
@@ -237,17 +241,35 @@ async function syncFromProduction(type: string) {
                         synced_from_production_at: now,
                         updated_at: now,
                     });
-                itemsSynced++;
+                if (upsertError) {
+                    console.error('[ML Sandbox] Error upserting sandbox settings:', upsertError);
+                    errors.push(`Settings upsert error: ${upsertError.message}`);
+                } else {
+                    itemsSynced++;
+                    console.log('[ML Sandbox] Settings synced successfully');
+                }
             }
         }
 
         // Sync documents
         if (type === 'all' || type === 'documents') {
-            // Clear existing sandbox documents
-            await supabase.from('ml_sandbox_documents').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+            // Clear existing sandbox documents - use gte instead of neq for more reliable deletion
+            const { error: deleteDocsError } = await supabase
+                .from('ml_sandbox_documents')
+                .delete()
+                .gte('created_at', '1970-01-01');
 
-            const { data: prodDocs } = await supabase.from('documents').select('*');
-            if (prodDocs && prodDocs.length > 0) {
+            if (deleteDocsError) {
+                console.error('[ML Sandbox] Error clearing sandbox documents:', deleteDocsError);
+                errors.push(`Document clear error: ${deleteDocsError.message}`);
+            }
+
+            const { data: prodDocs, error: docsError } = await supabase.from('documents').select('*');
+
+            if (docsError) {
+                console.error('[ML Sandbox] Error fetching production documents:', docsError);
+                errors.push(`Documents fetch error: ${docsError.message}`);
+            } else if (prodDocs && prodDocs.length > 0) {
                 const sandboxDocs = prodDocs.map((doc: any) => ({
                     content: doc.content,
                     metadata: doc.metadata,
@@ -256,18 +278,38 @@ async function syncFromProduction(type: string) {
                     production_id: doc.id,
                     synced_from_production_at: now,
                 }));
-                await supabase.from('ml_sandbox_documents').insert(sandboxDocs);
-                itemsSynced += sandboxDocs.length;
+                const { error: insertDocsError } = await supabase.from('ml_sandbox_documents').insert(sandboxDocs);
+                if (insertDocsError) {
+                    console.error('[ML Sandbox] Error inserting sandbox documents:', insertDocsError);
+                    errors.push(`Documents insert error: ${insertDocsError.message}`);
+                } else {
+                    itemsSynced += sandboxDocs.length;
+                    console.log(`[ML Sandbox] ${sandboxDocs.length} documents synced successfully`);
+                }
+            } else {
+                console.log('[ML Sandbox] No production documents found to sync');
             }
         }
 
         // Sync rules
         if (type === 'all' || type === 'rules') {
-            // Clear existing sandbox rules
-            await supabase.from('ml_sandbox_bot_rules').delete().neq('id', 0);
+            // Clear existing sandbox rules - use gt for serial IDs
+            const { error: deleteRulesError } = await supabase
+                .from('ml_sandbox_bot_rules')
+                .delete()
+                .gt('id', 0);
 
-            const { data: prodRules } = await supabase.from('bot_rules').select('*');
-            if (prodRules && prodRules.length > 0) {
+            if (deleteRulesError) {
+                console.error('[ML Sandbox] Error clearing sandbox rules:', deleteRulesError);
+                errors.push(`Rules clear error: ${deleteRulesError.message}`);
+            }
+
+            const { data: prodRules, error: rulesError } = await supabase.from('bot_rules').select('*');
+
+            if (rulesError) {
+                console.error('[ML Sandbox] Error fetching production rules:', rulesError);
+                errors.push(`Rules fetch error: ${rulesError.message}`);
+            } else if (prodRules && prodRules.length > 0) {
                 const sandboxRules = prodRules.map((rule: any) => ({
                     rule: rule.rule,
                     category: rule.category,
@@ -276,18 +318,38 @@ async function syncFromProduction(type: string) {
                     production_id: rule.id,
                     synced_from_production_at: now,
                 }));
-                await supabase.from('ml_sandbox_bot_rules').insert(sandboxRules);
-                itemsSynced += sandboxRules.length;
+                const { error: insertRulesError } = await supabase.from('ml_sandbox_bot_rules').insert(sandboxRules);
+                if (insertRulesError) {
+                    console.error('[ML Sandbox] Error inserting sandbox rules:', insertRulesError);
+                    errors.push(`Rules insert error: ${insertRulesError.message}`);
+                } else {
+                    itemsSynced += sandboxRules.length;
+                    console.log(`[ML Sandbox] ${sandboxRules.length} rules synced successfully`);
+                }
+            } else {
+                console.log('[ML Sandbox] No production rules found to sync');
             }
         }
 
         // Sync goals
         if (type === 'all' || type === 'goals') {
             // Clear existing sandbox goals
-            await supabase.from('ml_sandbox_bot_goals').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+            const { error: deleteGoalsError } = await supabase
+                .from('ml_sandbox_bot_goals')
+                .delete()
+                .gte('created_at', '1970-01-01');
 
-            const { data: prodGoals } = await supabase.from('bot_goals').select('*');
-            if (prodGoals && prodGoals.length > 0) {
+            if (deleteGoalsError) {
+                console.error('[ML Sandbox] Error clearing sandbox goals:', deleteGoalsError);
+                errors.push(`Goals clear error: ${deleteGoalsError.message}`);
+            }
+
+            const { data: prodGoals, error: goalsError } = await supabase.from('bot_goals').select('*');
+
+            if (goalsError) {
+                console.error('[ML Sandbox] Error fetching production goals:', goalsError);
+                errors.push(`Goals fetch error: ${goalsError.message}`);
+            } else if (prodGoals && prodGoals.length > 0) {
                 const sandboxGoals = prodGoals.map((goal: any) => ({
                     goal_name: goal.goal_name,
                     goal_description: goal.goal_description,
@@ -298,18 +360,38 @@ async function syncFromProduction(type: string) {
                     production_id: goal.id,
                     synced_from_production_at: now,
                 }));
-                await supabase.from('ml_sandbox_bot_goals').insert(sandboxGoals);
-                itemsSynced += sandboxGoals.length;
+                const { error: insertGoalsError } = await supabase.from('ml_sandbox_bot_goals').insert(sandboxGoals);
+                if (insertGoalsError) {
+                    console.error('[ML Sandbox] Error inserting sandbox goals:', insertGoalsError);
+                    errors.push(`Goals insert error: ${insertGoalsError.message}`);
+                } else {
+                    itemsSynced += sandboxGoals.length;
+                    console.log(`[ML Sandbox] ${sandboxGoals.length} goals synced successfully`);
+                }
+            } else {
+                console.log('[ML Sandbox] No production goals found to sync');
             }
         }
 
         // Sync categories
         if (type === 'all' || type === 'categories') {
             // Clear existing sandbox categories
-            await supabase.from('ml_sandbox_knowledge_categories').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+            const { error: deleteCatsError } = await supabase
+                .from('ml_sandbox_knowledge_categories')
+                .delete()
+                .gte('created_at', '1970-01-01');
 
-            const { data: prodCategories } = await supabase.from('knowledge_categories').select('*');
-            if (prodCategories && prodCategories.length > 0) {
+            if (deleteCatsError) {
+                console.error('[ML Sandbox] Error clearing sandbox categories:', deleteCatsError);
+                errors.push(`Categories clear error: ${deleteCatsError.message}`);
+            }
+
+            const { data: prodCategories, error: catsError } = await supabase.from('knowledge_categories').select('*');
+
+            if (catsError) {
+                console.error('[ML Sandbox] Error fetching production categories:', catsError);
+                errors.push(`Categories fetch error: ${catsError.message}`);
+            } else if (prodCategories && prodCategories.length > 0) {
                 const sandboxCategories = prodCategories.map((cat: any) => ({
                     name: cat.name,
                     type: cat.type,
@@ -317,8 +399,16 @@ async function syncFromProduction(type: string) {
                     production_id: cat.id,
                     synced_from_production_at: now,
                 }));
-                await supabase.from('ml_sandbox_knowledge_categories').insert(sandboxCategories);
-                itemsSynced += sandboxCategories.length;
+                const { error: insertCatsError } = await supabase.from('ml_sandbox_knowledge_categories').insert(sandboxCategories);
+                if (insertCatsError) {
+                    console.error('[ML Sandbox] Error inserting sandbox categories:', insertCatsError);
+                    errors.push(`Categories insert error: ${insertCatsError.message}`);
+                } else {
+                    itemsSynced += sandboxCategories.length;
+                    console.log(`[ML Sandbox] ${sandboxCategories.length} categories synced successfully`);
+                }
+            } else {
+                console.log('[ML Sandbox] No production categories found to sync');
             }
         }
 
@@ -328,6 +418,17 @@ async function syncFromProduction(type: string) {
             items_synced: itemsSynced,
         });
 
+        // Return response with errors if any
+        if (errors.length > 0) {
+            return NextResponse.json({
+                success: false,
+                message: `Synced ${itemsSynced} items but encountered ${errors.length} errors`,
+                itemsSynced,
+                syncedAt: now,
+                errors,
+            }, { status: 207 }); // 207 Multi-Status
+        }
+
         return NextResponse.json({
             success: true,
             message: `Synced ${itemsSynced} items from production to sandbox`,
@@ -336,7 +437,12 @@ async function syncFromProduction(type: string) {
         });
     } catch (error) {
         console.error('[ML Sandbox] Sync error:', error);
-        return NextResponse.json({ error: 'Sync failed' }, { status: 500 });
+        return NextResponse.json({
+            error: 'Sync failed',
+            details: error instanceof Error ? error.message : 'Unknown error',
+            partialSync: itemsSynced,
+            errors
+        }, { status: 500 });
     }
 }
 
