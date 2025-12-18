@@ -394,15 +394,22 @@ async function syncFromProduction(type: string) {
 
         // Sync categories
         if (type === 'all' || type === 'categories') {
-            // Clear existing sandbox categories
-            const { error: deleteCatsError } = await supabase
+            // Clear existing sandbox categories - fetch all and delete by ID
+            const { data: existingCats } = await supabase
                 .from('ml_sandbox_knowledge_categories')
-                .delete()
-                .gte('created_at', '1970-01-01');
+                .select('id');
 
-            if (deleteCatsError) {
-                console.error('[ML Sandbox] Error clearing sandbox categories:', deleteCatsError);
-                errors.push(`Categories clear error: ${deleteCatsError.message}`);
+            if (existingCats && existingCats.length > 0) {
+                const catIds = existingCats.map((c: any) => c.id);
+                const { error: deleteCatsError } = await supabase
+                    .from('ml_sandbox_knowledge_categories')
+                    .delete()
+                    .in('id', catIds);
+
+                if (deleteCatsError) {
+                    console.error('[ML Sandbox] Error clearing sandbox categories:', deleteCatsError);
+                    errors.push(`Categories clear error: ${deleteCatsError.message}`);
+                }
             }
 
             const { data: prodCategories, error: catsError } = await supabase.from('knowledge_categories').select('*');
@@ -411,6 +418,7 @@ async function syncFromProduction(type: string) {
                 console.error('[ML Sandbox] Error fetching production categories:', catsError);
                 errors.push(`Categories fetch error: ${catsError.message}`);
             } else if (prodCategories && prodCategories.length > 0) {
+                // Both production and sandbox use UUID for categories
                 const sandboxCategories = prodCategories.map((cat: any) => ({
                     name: cat.name,
                     type: cat.type,
