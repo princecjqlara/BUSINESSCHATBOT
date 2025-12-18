@@ -124,7 +124,9 @@ export default function MLSandboxPage() {
                 showMessage('success', data.message);
                 await fetchAllData();
             } else {
-                showMessage('error', 'Failed to sync from production');
+                const errorData = await res.json().catch(() => ({}));
+                showMessage('error', errorData.error || errorData.message || 'Failed to sync from production');
+                console.error('Sync error details:', errorData);
             }
         } catch (error) {
             showMessage('error', 'Sync failed');
