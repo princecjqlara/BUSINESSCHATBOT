@@ -477,7 +477,7 @@ function SettingsContent() {
                                     </div>
                                 )}
 
-                                <div className="grid gap-4">
+                                <div className="grid gap-4 max-h-[400px] overflow-y-auto pr-2">
                                     {connectedPages
                                         .slice((currentPage - 1) * pagesPerPage, currentPage * pagesPerPage)
                                         .map((page) => (
