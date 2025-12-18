@@ -70,29 +70,47 @@ ${conversationHistory.map(msg => `${msg.role}: ${msg.content}`).join('\n')}
 Failed Queries (questions that couldn't be answered well):
 ${failedQueries.join('\n')}
 
+CRITICAL INSTRUCTION - GENERATE GENERAL RULES AND MECHANICS, NOT SPECIFIC CONDITIONS:
+================================================================================
+You must generate GENERAL PRINCIPLES, MECHANICS, and REGULATIONS that apply to MANY situations.
+DO NOT generate specific if-then conditions that only apply to one scenario.
+
+❌ BAD EXAMPLES (specific conditions - DO NOT DO THIS):
+   - "If user says 'magkano', respond with the price list"
+   - "When someone messages 'hi', reply with 'Hello! Welcome to our store!'"
+   - "If customer asks 'may stock ba', check inventory"
+
+✅ GOOD EXAMPLES (general mechanics and principles - DO THIS):
+   - "Always provide clear pricing information when customers ask about costs"
+   - "Greet customers warmly and professionally at the start of conversations"
+   - "Check and confirm product availability before discussing orders"
+   - "Use a friendly, helpful tone while maintaining professionalism"
+   - "Acknowledge customer concerns before providing solutions"
+================================================================================
+
 Based on this analysis, suggest improvements in these areas:
 
 1. DOCUMENTS - Knowledge base content:
-   - Missing information that should be added
+   - Missing FACTUAL information (products, services, policies, FAQs)
    - Documents with similar content that should be merged
    - Outdated content that should be updated or deleted
-   - Documents that need proper categorization
 
 2. CATEGORIES - Document organization:
    - New categories needed to organize documents
    - Categories that are empty and should be deleted
 
-3. RULES - Bot behavior rules:
-   - New rules based on conversation patterns
-   - Rules that need updating
-   - Rules that are no longer relevant
+3. RULES - Bot behavior rules (GENERAL PRINCIPLES ONLY):
+   - Communication guidelines (tone, style, approach)
+   - Response quality standards
+   - Customer service principles
+   - DO NOT add specific message-response mappings
 
 4. GOALS - Bot conversation goals:
    - New goals based on what customers are trying to achieve
    - Goals that need priority adjustment
 
 5. CONVERSATION FLOW - Response structure:
-   - Improvements to conversation flow steps
+   - General improvements to conversation flow steps
 
 6. PERSONALITY - Bot tone and style:
    - Tone adjustments based on customer interactions
@@ -110,7 +128,8 @@ Respond in JSON format with an array of suggested changes:
   }
 ]
 
-Only suggest high-confidence changes (confidenceScore > 0.7).`;
+Only suggest high-confidence changes (confidenceScore > 0.7).
+Remember: GENERAL RULES ONLY, no specific conditions!`;
 
         // Use best available model for ML analysis
         const bestModel = await getBestMLModel();
@@ -167,8 +186,15 @@ Only suggest high-confidence changes (confidenceScore > 0.7).`;
 
 /**
  * Apply knowledge changes (with safety checks)
+ * @param change - The knowledge change to apply
+ * @param autoApprove - Whether to auto-approve the change
+ * @param useSandbox - Whether to apply changes to sandbox tables (default: true for safety)
  */
-export async function applyKnowledgeChange(change: KnowledgeChange, autoApprove: boolean = false): Promise<boolean> {
+export async function applyKnowledgeChange(
+    change: KnowledgeChange,
+    autoApprove: boolean = false,
+    useSandbox: boolean = true
+): Promise<boolean> {
     try {
         // Get best model for tracking
         const bestModel = await getBestMLModel();
@@ -187,6 +213,7 @@ export async function applyKnowledgeChange(change: KnowledgeChange, autoApprove:
                 approved: autoApprove,
                 applied: autoApprove,
                 model_used: bestModel,
+                is_sandbox: useSandbox,
             })
             .select()
             .single();
@@ -202,26 +229,29 @@ export async function applyKnowledgeChange(change: KnowledgeChange, autoApprove:
             return false;
         }
 
+        // Log where changes are being applied
+        console.log(`[ML Knowledge] Applying change to ${useSandbox ? 'SANDBOX' : 'PRODUCTION'} tables`);
+
         // Apply the change based on entity type
         switch (change.entityType) {
             case 'document':
                 // Handle merge operation for documents
                 if (change.changeType === 'merge') {
-                    return await applyDocumentMerge(change);
+                    return await applyDocumentMerge(change, useSandbox);
                 }
-                return await applyDocumentChange(change);
+                return await applyDocumentChange(change, useSandbox);
             case 'rule':
-                return await applyRuleChange(change);
+                return await applyRuleChange(change, useSandbox);
             case 'instruction':
-                return await applyInstructionChange(change);
+                return await applyInstructionChange(change, useSandbox);
             case 'personality':
-                return await applyPersonalityChange(change);
+                return await applyPersonalityChange(change, useSandbox);
             case 'goal':
-                return await applyGoalChange(change);
+                return await applyGoalChange(change, useSandbox);
             case 'conversationFlow':
-                return await applyConversationFlowChange(change);
+                return await applyConversationFlowChange(change, useSandbox);
             case 'category':
-                return await applyCategoryChange(change);
+                return await applyCategoryChange(change, useSandbox);
             default:
                 console.error('[ML Knowledge] Unknown entity type:', change.entityType);
                 return false;
@@ -234,8 +264,11 @@ export async function applyKnowledgeChange(change: KnowledgeChange, autoApprove:
 
 /**
  * Apply document change
+ * @param useSandbox - Whether to apply to sandbox tables (parameter ready for future implementation)
  */
-async function applyDocumentChange(change: KnowledgeChange): Promise<boolean> {
+async function applyDocumentChange(change: KnowledgeChange, useSandbox: boolean = true): Promise<boolean> {
+    // Note: Sandbox table switching will be fully implemented in a future update
+    const tableName = useSandbox ? 'ml_sandbox_documents' : 'documents';
     try {
         // Get current value before change for undo capability
         let oldValueSnapshot: any = null;
@@ -310,8 +343,10 @@ async function applyDocumentChange(change: KnowledgeChange): Promise<boolean> {
 
 /**
  * Apply rule change
+ * @param useSandbox - Whether to apply to sandbox tables
  */
-async function applyRuleChange(change: KnowledgeChange): Promise<boolean> {
+async function applyRuleChange(change: KnowledgeChange, useSandbox: boolean = true): Promise<boolean> {
+    const tableName = useSandbox ? 'ml_sandbox_bot_rules' : 'bot_rules';
     try {
         // Get current value before change for undo capability
         let oldValueSnapshot: any = null;
@@ -389,8 +424,10 @@ async function applyRuleChange(change: KnowledgeChange): Promise<boolean> {
 
 /**
  * Apply instruction change
+ * @param useSandbox - Whether to apply to sandbox tables
  */
-async function applyInstructionChange(change: KnowledgeChange): Promise<boolean> {
+async function applyInstructionChange(change: KnowledgeChange, useSandbox: boolean = true): Promise<boolean> {
+    const tableName = useSandbox ? 'ml_sandbox_bot_settings' : 'bot_settings';
     try {
         // Get current instructions
         const { data: current } = await supabase
@@ -424,8 +461,10 @@ async function applyInstructionChange(change: KnowledgeChange): Promise<boolean>
 
 /**
  * Apply personality change (bot tone/name)
+ * @param useSandbox - Whether to apply to sandbox tables
  */
-async function applyPersonalityChange(change: KnowledgeChange): Promise<boolean> {
+async function applyPersonalityChange(change: KnowledgeChange, useSandbox: boolean = true): Promise<boolean> {
+    const tableName = useSandbox ? 'ml_sandbox_bot_settings' : 'bot_settings';
     try {
         const updates: Record<string, any> = {};
 
@@ -452,8 +491,10 @@ async function applyPersonalityChange(change: KnowledgeChange): Promise<boolean>
 
 /**
  * Apply goal change (bot goals CRUD)
+ * @param useSandbox - Whether to apply to sandbox tables
  */
-async function applyGoalChange(change: KnowledgeChange): Promise<boolean> {
+async function applyGoalChange(change: KnowledgeChange, useSandbox: boolean = true): Promise<boolean> {
+    const tableName = useSandbox ? 'ml_sandbox_bot_goals' : 'bot_goals';
     try {
         if (change.changeType === 'add' && change.newValue) {
             const { error } = await supabase
@@ -500,8 +541,10 @@ async function applyGoalChange(change: KnowledgeChange): Promise<boolean> {
 
 /**
  * Apply conversation flow change (updates bot_settings.conversation_flow)
+ * @param useSandbox - Whether to apply to sandbox tables
  */
-async function applyConversationFlowChange(change: KnowledgeChange): Promise<boolean> {
+async function applyConversationFlowChange(change: KnowledgeChange, useSandbox: boolean = true): Promise<boolean> {
+    const tableName = useSandbox ? 'ml_sandbox_bot_settings' : 'bot_settings';
     try {
         if (change.changeType === 'update' && change.newValue) {
             const { error } = await supabase
@@ -522,8 +565,10 @@ async function applyConversationFlowChange(change: KnowledgeChange): Promise<boo
 
 /**
  * Apply category change (knowledge categories CRUD)
+ * @param useSandbox - Whether to apply to sandbox tables
  */
-async function applyCategoryChange(change: KnowledgeChange): Promise<boolean> {
+async function applyCategoryChange(change: KnowledgeChange, useSandbox: boolean = true): Promise<boolean> {
+    const tableName = useSandbox ? 'ml_sandbox_knowledge_categories' : 'knowledge_categories';
     try {
         if (change.changeType === 'add' && change.newValue) {
             const { data, error } = await supabase
@@ -560,8 +605,10 @@ async function applyCategoryChange(change: KnowledgeChange): Promise<boolean> {
 
 /**
  * Apply document merge (combine multiple documents into one)
+ * @param useSandbox - Whether to apply to sandbox tables
  */
-async function applyDocumentMerge(change: KnowledgeChange): Promise<boolean> {
+async function applyDocumentMerge(change: KnowledgeChange, useSandbox: boolean = true): Promise<boolean> {
+    const tableName = useSandbox ? 'ml_sandbox_documents' : 'documents';
     try {
         if (!change.mergeSourceIds || change.mergeSourceIds.length < 2) {
             console.error('[ML Knowledge] Merge requires at least 2 source document IDs');

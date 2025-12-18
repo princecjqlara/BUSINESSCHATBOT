@@ -11,7 +11,8 @@ import {
     Store,
     ChevronLeft,
     ChevronRight,
-    BrainCircuit
+    BrainCircuit,
+    Beaker
 } from 'lucide-react';
 
 import Link from 'next/link';
@@ -30,6 +31,7 @@ export default function Sidebar() {
         { icon: Store, href: '/store', label: 'Store' },
         { icon: Workflow, href: '/workflows', label: 'Workflows' },
         { icon: BrainCircuit, href: '/ml-analytics', label: 'ML Analytics' },
+        { icon: Beaker, href: '/ml-sandbox', label: 'ML Sandbox' },
         { icon: Settings, href: '/settings', label: 'Settings' },
     ];
 

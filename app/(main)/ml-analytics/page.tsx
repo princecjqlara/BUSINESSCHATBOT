@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import ConversationAnalyzer from '@/app/components/ConversationAnalyzer';
 
 interface OverviewData {
     period: { startDate: string; endDate: string; days: number };
@@ -45,7 +46,7 @@ export default function MLAnalyticsPage() {
     const [funnelStages, setFunnelStages] = useState<FunnelStage[]>([]);
     const [loading, setLoading] = useState(true);
     const [days, setDays] = useState(30);
-    const [activeTab, setActiveTab] = useState<'overview' | 'strategies' | 'funnel'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'strategies' | 'funnel' | 'analysis'>('overview');
 
     useEffect(() => {
         fetchData();
@@ -144,7 +145,7 @@ export default function MLAnalyticsPage() {
 
                 {/* Tabs */}
                 <div style={{ display: 'flex', gap: '8px', marginBottom: '24px' }}>
-                    {(['overview', 'strategies', 'funnel'] as const).map((tab) => (
+                    {(['overview', 'strategies', 'funnel', 'analysis'] as const).map((tab) => (
                         <button
                             key={tab}
                             onClick={() => setActiveTab(tab)}
@@ -396,6 +397,11 @@ export default function MLAnalyticsPage() {
                                     </ul>
                                 </div>
                             </div>
+                        )}
+
+                        {/* Analysis Tab */}
+                        {activeTab === 'analysis' && (
+                            <ConversationAnalyzer />
                         )}
                     </>
                 )}
