@@ -53,3 +53,5 @@ If you still get errors after adding the key:
 4. **Check API key permissions**: Ensure your NVIDIA API key has access to the embedding models
 
 
+
+

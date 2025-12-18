@@ -13,6 +13,7 @@ interface BotGoal {
     priority_order: number | null;
     is_active: boolean;
     is_optional: boolean;
+    stop_on_completion: boolean;
 }
 
 interface ConversationMessage {
@@ -303,5 +304,6 @@ export async function checkAndRecordGoalCompletions(
         // Don't throw - goal tracking should not break the conversation flow
     }
 }
+
 
 

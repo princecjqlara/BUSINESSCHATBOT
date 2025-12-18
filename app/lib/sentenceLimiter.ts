@@ -82,13 +82,29 @@ export function splitIntoMessages(text: string, maxSentencesPerMessage: number |
         'jan', 'feb', 'mar', 'apr', 'jun', 'jul', 'aug', 'sep', 'sept', 'oct', 'nov', 'dec',
         'mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun',
         'p.m', 'a.m', 'p.s', 'n.b', 'r.s.v.p', 'asap', 'fyi',
-        'php', 'usd', 'gbp', 'eur', 'k', 'm', 'b' // Currency and number abbreviations
+        'php', 'usd', 'gbp', 'eur', 'k', 'm', 'b', // Currency and number abbreviations
+        // Single letters that are commonly used as abbreviations (prevent splitting "P.S.", "P.", "S." etc.)
+        'p', 's', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'q', 'r', 't', 'u', 'v', 'w', 'x', 'y', 'z'
     ];
 
     // Helper function to check if position is part of an abbreviation
     function isAbbreviation(text: string, periodPos: number): boolean {
         // Check the character(s) before the period
         const beforePeriod = text.substring(Math.max(0, periodPos - 10), periodPos).toLowerCase();
+        const afterPeriod = text.substring(periodPos + 1, Math.min(text.length, periodPos + 5));
+
+        // Check for single letter followed by period (like "P." or "S." in "P.S.")
+        // This is an abbreviation if followed by another letter.period or just a letter
+        if (/[a-z]$/i.test(beforePeriod)) {
+            // Check if next char is also a single letter (part of multi-letter abbreviation like P.S.)
+            if (/^[a-z]\.?/i.test(afterPeriod)) {
+                return true;
+            }
+            // Check if it's just a single letter at the end preceded by space/newline (like "P." at line start)
+            if (/\s[a-z]$/i.test(beforePeriod) || /^[a-z]$/i.test(beforePeriod)) {
+                return true;
+            }
+        }
 
         // Check for patterns like "e.g." (letter + period pattern)
         // Match: single letter followed by period at position
@@ -105,7 +121,7 @@ export function splitIntoMessages(text: string, maxSentencesPerMessage: number |
             if (beforePeriod.endsWith(abbrLower)) {
                 // Make sure it's a word boundary before the abbreviation
                 const charBefore = beforePeriod.charAt(beforePeriod.length - abbrLower.length - 1);
-                if (!charBefore || /[\s(,;:]/.test(charBefore)) {
+                if (!charBefore || /[\s(,;:\n]/.test(charBefore)) {
                     return true;
                 }
             }

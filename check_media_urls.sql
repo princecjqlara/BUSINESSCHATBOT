@@ -96,3 +96,5 @@ WHERE image_urls IS NOT NULL
   AND array_length(image_urls::text[], 1) > 0;
 
 
+
+

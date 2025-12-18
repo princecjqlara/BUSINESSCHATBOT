@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, Suspense } from 'react';
-import { ArrowLeft, Facebook, Trash2, CheckCircle, AlertCircle, Loader2, RefreshCw, Target, Plus, Edit2, GripVertical, X, ToggleLeft, ToggleRight } from 'lucide-react';
+import { ArrowLeft, Facebook, Trash2, CheckCircle, AlertCircle, Loader2, RefreshCw, Target, Plus, Edit2, GripVertical, X, ToggleLeft, ToggleRight, StopCircle } from 'lucide-react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import PageSelector from '@/app/components/PageSelector';
@@ -30,6 +30,7 @@ interface BotGoal {
     priority_order: number | null;
     is_active: boolean;
     is_optional: boolean;
+    stop_on_completion: boolean;
     created_at: string;
     updated_at: string;
 }
@@ -44,7 +45,7 @@ function SettingsContent() {
 
     // Pagination state for Facebook Pages
     const [currentPage, setCurrentPage] = useState(1);
-    const pagesPerPage = 5;
+    const pagesPerPage = 3;
 
     // Facebook OAuth state
     const [showPageSelector, setShowPageSelector] = useState(false);
@@ -55,7 +56,7 @@ function SettingsContent() {
     const [loadingGoals, setLoadingGoals] = useState(true);
     const [showGoalModal, setShowGoalModal] = useState(false);
     const [editingGoal, setEditingGoal] = useState<BotGoal | null>(null);
-    const [goalForm, setGoalForm] = useState<{ goalName: string; goalDescription: string; priorityOrder: number | null; isActive: boolean; isOptional: boolean }>({ goalName: '', goalDescription: '', priorityOrder: null, isActive: true, isOptional: false });
+    const [goalForm, setGoalForm] = useState<{ goalName: string; goalDescription: string; priorityOrder: number | null; isActive: boolean; isOptional: boolean; stopOnCompletion: boolean }>({ goalName: '', goalDescription: '', priorityOrder: null, isActive: true, isOptional: false, stopOnCompletion: false });
 
     // Handle OAuth callback results
     useEffect(() => {
@@ -201,7 +202,7 @@ function SettingsContent() {
 
     const handleAddGoal = () => {
         setEditingGoal(null);
-        setGoalForm({ goalName: '', goalDescription: '', priorityOrder: null, isActive: true, isOptional: false });
+        setGoalForm({ goalName: '', goalDescription: '', priorityOrder: null, isActive: true, isOptional: false, stopOnCompletion: false });
         setShowGoalModal(true);
     };
 
@@ -213,6 +214,7 @@ function SettingsContent() {
             priorityOrder: goal.priority_order,
             isActive: goal.is_active,
             isOptional: goal.is_optional,
+            stopOnCompletion: goal.stop_on_completion,
         });
         setShowGoalModal(true);
     };
@@ -237,6 +239,7 @@ function SettingsContent() {
                         priorityOrder: goalForm.priorityOrder,
                         isActive: goalForm.isActive,
                         isOptional: goalForm.isOptional,
+                        stopOnCompletion: goalForm.stopOnCompletion,
                     }),
                 });
 
@@ -259,6 +262,7 @@ function SettingsContent() {
                         priorityOrder: goalForm.priorityOrder,
                         isActive: goalForm.isActive,
                         isOptional: goalForm.isOptional,
+                        stopOnCompletion: goalForm.stopOnCompletion,
                     }),
                 });
 
@@ -565,8 +569,8 @@ function SettingsContent() {
                                                 key={i + 1}
                                                 onClick={() => setCurrentPage(i + 1)}
                                                 className={`w-8 h-8 rounded-full text-sm font-medium transition-colors ${currentPage === i + 1
-                                                        ? 'bg-teal-600 text-white'
-                                                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                                    ? 'bg-teal-600 text-white'
+                                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                                                     }`}
                                             >
                                                 {i + 1}
@@ -652,6 +656,12 @@ function SettingsContent() {
                                                 {goal.is_optional && (
                                                     <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-md font-medium">
                                                         Optional
+                                                    </span>
+                                                )}
+                                                {goal.stop_on_completion && (
+                                                    <span className="px-2 py-1 bg-red-50 text-red-600 text-xs rounded-md font-medium flex items-center gap-1">
+                                                        <StopCircle size={14} />
+                                                        Stop when reached
                                                     </span>
                                                 )}
                                                 {!goal.is_active && (
@@ -784,6 +794,25 @@ function SettingsContent() {
                                     <label htmlFor="isOptional" className="text-sm font-medium text-gray-700">
                                         Optional (not mandatory - bot will try but won't fail if not achieved)
                                     </label>
+                                </div>
+
+                                <div className="flex items-start gap-3 bg-red-50 border border-red-100 rounded-xl p-3">
+                                    <input
+                                        type="checkbox"
+                                        id="stopOnCompletion"
+                                        checked={goalForm.stopOnCompletion}
+                                        onChange={(e) => setGoalForm({ ...goalForm, stopOnCompletion: e.target.checked })}
+                                        className="mt-1 w-4 h-4 text-red-600 border-red-200 rounded focus:ring-red-500"
+                                    />
+                                    <div>
+                                        <label htmlFor="stopOnCompletion" className="text-sm font-medium text-red-700 flex items-center gap-2">
+                                            <StopCircle size={16} className="text-red-500" />
+                                            Stop bot when this goal is reached
+                                        </label>
+                                        <p className="text-xs text-red-600 mt-1">
+                                            Ideal for final goals. Once achieved, the bot will ask to wrap up and should stop if the user confirms they're done.
+                                        </p>
+                                    </div>
                                 </div>
                             </div>
 

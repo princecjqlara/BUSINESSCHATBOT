@@ -25,7 +25,7 @@ export async function GET() {
 export async function POST(req: Request) {
     try {
         const body = await req.json();
-        const { goalName, goalDescription, priorityOrder, isActive, isOptional } = body;
+        const { goalName, goalDescription, priorityOrder, isActive, isOptional, stopOnCompletion } = body;
 
         if (!goalName || goalName.trim() === '') {
             return NextResponse.json({ error: 'Goal name is required' }, { status: 400 });
@@ -39,6 +39,7 @@ export async function POST(req: Request) {
                 priority_order: priorityOrder !== undefined && priorityOrder !== null ? parseInt(String(priorityOrder), 10) : null,
                 is_active: isActive !== undefined ? Boolean(isActive) : true,
                 is_optional: isOptional !== undefined ? Boolean(isOptional) : false,
+                stop_on_completion: stopOnCompletion !== undefined ? Boolean(stopOnCompletion) : false,
             })
             .select()
             .single();
@@ -59,7 +60,7 @@ export async function POST(req: Request) {
 export async function PUT(req: Request) {
     try {
         const body = await req.json();
-        const { id, goalName, goalDescription, priorityOrder, isActive, isOptional } = body;
+        const { id, goalName, goalDescription, priorityOrder, isActive, isOptional, stopOnCompletion } = body;
 
         if (!id) {
             return NextResponse.json({ error: 'Goal ID is required' }, { status: 400 });
@@ -73,6 +74,7 @@ export async function PUT(req: Request) {
         }
         if (isActive !== undefined) updates.is_active = Boolean(isActive);
         if (isOptional !== undefined) updates.is_optional = Boolean(isOptional);
+        if (stopOnCompletion !== undefined) updates.stop_on_completion = Boolean(stopOnCompletion);
 
         if (Object.keys(updates).length === 0) {
             return NextResponse.json({ error: 'No updates provided' }, { status: 400 });
@@ -123,5 +125,6 @@ export async function DELETE(req: Request) {
         return NextResponse.json({ error: 'Internal Server Error', details: error?.message }, { status: 500 });
     }
 }
+
 
 

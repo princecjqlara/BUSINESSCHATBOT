@@ -91,3 +91,5 @@ COMMENT ON TABLE lead_goal_completions IS 'Tracks which goals have been successf
 COMMENT ON COLUMN lead_goal_completions.completion_context IS 'Optional context about how or why the goal was completed (e.g., "User provided email address", "User expressed interest in product X").';
 
 
+
+

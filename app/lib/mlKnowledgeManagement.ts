@@ -464,6 +464,7 @@ async function applyGoalChange(change: KnowledgeChange): Promise<boolean> {
                     priority_order: change.newValue.priorityOrder || null,
                     is_active: true,
                     is_optional: change.newValue.isOptional || false,
+                    stop_on_completion: change.newValue.stopOnCompletion || false,
                 });
             console.log('[ML Knowledge] Created new bot goal:', change.newValue.goalName || change.newValue);
             return !error;
@@ -474,6 +475,7 @@ async function applyGoalChange(change: KnowledgeChange): Promise<boolean> {
             if (change.newValue.priorityOrder !== undefined) updates.priority_order = change.newValue.priorityOrder;
             if (change.newValue.isActive !== undefined) updates.is_active = change.newValue.isActive;
             if (change.newValue.isOptional !== undefined) updates.is_optional = change.newValue.isOptional;
+            if (change.newValue.stopOnCompletion !== undefined) updates.stop_on_completion = change.newValue.stopOnCompletion;
 
             const { error } = await supabase
                 .from('bot_goals')
@@ -652,4 +654,3 @@ export async function processKnowledgeImprovements(
         console.error('[ML Knowledge] Error processing improvements:', error);
     }
 }
-

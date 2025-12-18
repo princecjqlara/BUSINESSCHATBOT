@@ -8,3 +8,5 @@ ADD COLUMN IF NOT EXISTS conversation_flow TEXT;
 COMMENT ON COLUMN bot_settings.conversation_flow IS 'User-defined conversation flow description or structure for the bot';
 
 
+
+
