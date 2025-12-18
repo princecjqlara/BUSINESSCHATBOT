@@ -4,17 +4,20 @@
  */
 
 import { supabase } from './supabase';
+import OpenAI from 'openai';
 
-// Dynamically import Google AI to avoid build issues
-let genAI: any = null;
+// Use OpenAI SDK with NVIDIA API (same pattern as other files)
+const client = new OpenAI({
+    baseURL: 'https://integrate.api.nvidia.com/v1',
+    apiKey: process.env.NVIDIA_API_KEY,
+});
 
-async function getGenAI() {
-    if (!genAI) {
-        const { GoogleGenerativeAI } = await import('@google/generative-ai');
-        genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY || '');
-    }
-    return genAI;
-}
+// AI models for conversation analysis
+const ANALYSIS_MODELS = [
+    'meta/llama-3.1-70b-instruct',
+    'deepseek-ai/deepseek-v3.1',
+    'meta/llama-3.1-8b-instruct',
+];
 
 // Types
 export interface MessageAnalysis {
@@ -155,13 +158,22 @@ async function fetchConversationHistory(senderId: string, limit: number = 50): P
 /**
  * Get the best available AI model
  */
-async function getBestModel() {
-    const ai = await getGenAI();
-    try {
-        return ai.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
-    } catch {
-        return ai.getGenerativeModel({ model: 'gemini-pro' });
+async function getBestModel(): Promise<string> {
+    for (const model of ANALYSIS_MODELS) {
+        try {
+            await client.chat.completions.create({
+                model,
+                messages: [{ role: 'user', content: 'test' }],
+                max_tokens: 1,
+            });
+            console.log(`[ConversationAnalysis] Using model: ${model}`);
+            return model;
+        } catch {
+            continue;
+        }
     }
+    console.log(`[ConversationAnalysis] Using fallback model: ${ANALYSIS_MODELS[ANALYSIS_MODELS.length - 1]}`);
+    return ANALYSIS_MODELS[ANALYSIS_MODELS.length - 1];
 }
 
 /**
@@ -273,8 +285,16 @@ IMPORTANT:
 
     try {
         const model = await getBestModel();
-        const result = await model.generateContent(analysisPrompt);
-        const responseText = result.response.text();
+        const completion = await client.chat.completions.create({
+            model,
+            messages: [
+                { role: 'system', content: 'You are an expert conversation analyst. Respond with valid JSON only.' },
+                { role: 'user', content: analysisPrompt },
+            ],
+            temperature: 0.7,
+            max_tokens: 4000,
+        });
+        const responseText = completion.choices[0]?.message?.content || '';
 
         // Parse JSON from response
         let jsonContent = responseText;
