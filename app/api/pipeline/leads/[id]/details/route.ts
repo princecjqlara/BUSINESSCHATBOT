@@ -247,6 +247,8 @@ export async function GET(
                 decisionMakerName: (lead as any).decision_maker_name || null,
                 decisionMakerPosition: (lead as any).decision_maker_position || null,
                 additionalContactInfo: (lead as any).additional_contact_info || null,
+                // Conversation analysis (auto-generated on stage change)
+                conversationAnalysis: (lead as any).conversation_analysis || null,
             },
             bestContactTimes,
             conversationHistory,

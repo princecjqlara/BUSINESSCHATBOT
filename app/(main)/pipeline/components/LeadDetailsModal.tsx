@@ -24,6 +24,19 @@ interface LeadDetails {
         decisionMakerName: string | null;
         decisionMakerPosition: string | null;
         additionalContactInfo: any | null;
+        conversationAnalysis: {
+            overallScore: number;
+            excellentCount: number;
+            goodCount: number;
+            questionableCount: number;
+            mistakeCount: number;
+            blunderCount: number;
+            keyInsights: string[];
+            improvementAreas: string[];
+            analyzedAt: string;
+            triggerStage: string;
+            messageCount: number;
+        } | null;
     };
     bestContactTimes: BestContactTimesData | null;
     conversationHistory: Array<{
@@ -79,7 +92,9 @@ export default function LeadDetailsModal({ leadId, isOpen, onClose }: LeadDetail
     const [loading, setLoading] = useState(true);
     const [details, setDetails] = useState<LeadDetails | null>(null);
     const [error, setError] = useState<string | null>(null);
-    const [activeTab, setActiveTab] = useState<'overview' | 'contact' | 'ml' | 'conversation'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'contact' | 'ml' | 'conversation' | 'analysis'>('overview');
+    const [analysisLoading, setAnalysisLoading] = useState(false);
+    const [analysisData, setAnalysisData] = useState<any>(null);
 
     useEffect(() => {
         if (isOpen && leadId) {
@@ -180,43 +195,48 @@ export default function LeadDetailsModal({ leadId, isOpen, onClose }: LeadDetail
                             <div className="flex border-b border-gray-200 px-6">
                                 <button
                                     onClick={() => setActiveTab('overview')}
-                                    className={`px-4 py-3 font-medium text-sm transition-colors border-b-2 ${
-                                        activeTab === 'overview'
-                                            ? 'border-blue-600 text-blue-600'
-                                            : 'border-transparent text-gray-500 hover:text-gray-700'
-                                    }`}
+                                    className={`px-4 py-3 font-medium text-sm transition-colors border-b-2 ${activeTab === 'overview'
+                                        ? 'border-blue-600 text-blue-600'
+                                        : 'border-transparent text-gray-500 hover:text-gray-700'
+                                        }`}
                                 >
                                     Overview
                                 </button>
                                 <button
                                     onClick={() => setActiveTab('contact')}
-                                    className={`px-4 py-3 font-medium text-sm transition-colors border-b-2 ${
-                                        activeTab === 'contact'
-                                            ? 'border-blue-600 text-blue-600'
-                                            : 'border-transparent text-gray-500 hover:text-gray-700'
-                                    }`}
+                                    className={`px-4 py-3 font-medium text-sm transition-colors border-b-2 ${activeTab === 'contact'
+                                        ? 'border-blue-600 text-blue-600'
+                                        : 'border-transparent text-gray-500 hover:text-gray-700'
+                                        }`}
                                 >
                                     Best Contact Times
                                 </button>
                                 <button
                                     onClick={() => setActiveTab('ml')}
-                                    className={`px-4 py-3 font-medium text-sm transition-colors border-b-2 ${
-                                        activeTab === 'ml'
-                                            ? 'border-blue-600 text-blue-600'
-                                            : 'border-transparent text-gray-500 hover:text-gray-700'
-                                    }`}
+                                    className={`px-4 py-3 font-medium text-sm transition-colors border-b-2 ${activeTab === 'ml'
+                                        ? 'border-blue-600 text-blue-600'
+                                        : 'border-transparent text-gray-500 hover:text-gray-700'
+                                        }`}
                                 >
                                     ML Insights
                                 </button>
                                 <button
                                     onClick={() => setActiveTab('conversation')}
-                                    className={`px-4 py-3 font-medium text-sm transition-colors border-b-2 ${
-                                        activeTab === 'conversation'
-                                            ? 'border-blue-600 text-blue-600'
-                                            : 'border-transparent text-gray-500 hover:text-gray-700'
-                                    }`}
+                                    className={`px-4 py-3 font-medium text-sm transition-colors border-b-2 ${activeTab === 'conversation'
+                                        ? 'border-blue-600 text-blue-600'
+                                        : 'border-transparent text-gray-500 hover:text-gray-700'
+                                        }`}
                                 >
                                     Conversation
+                                </button>
+                                <button
+                                    onClick={() => setActiveTab('analysis')}
+                                    className={`px-4 py-3 font-medium text-sm transition-colors border-b-2 ${activeTab === 'analysis'
+                                        ? 'border-purple-600 text-purple-600'
+                                        : 'border-transparent text-gray-500 hover:text-gray-700'
+                                        }`}
+                                >
+                                    🏆 Analysis
                                 </button>
                             </div>
 
@@ -285,211 +305,211 @@ export default function LeadDetailsModal({ leadId, isOpen, onClose }: LeadDetail
                                         </div>
 
                                         {/* Business & Contact Details */}
-                                        {(details.lead.pageName || details.lead.pageLink || details.lead.businessName || 
-                                          details.lead.decisionMakerName || details.lead.decisionMakerPosition || 
-                                          details.lead.additionalContactInfo) && (
-                                            <div className="bg-blue-50 rounded-xl p-6">
-                                                <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-                                                    <Building2 size={20} />
-                                                    Business & Contact Details
-                                                </h3>
-                                                <div className="grid grid-cols-2 gap-4">
-                                                    {details.lead.businessName && (
-                                                        <div>
-                                                            <div className="text-xs text-gray-500 mb-1 flex items-center gap-1">
-                                                                <Building2 size={12} />
-                                                                Business Name
+                                        {(details.lead.pageName || details.lead.pageLink || details.lead.businessName ||
+                                            details.lead.decisionMakerName || details.lead.decisionMakerPosition ||
+                                            details.lead.additionalContactInfo) && (
+                                                <div className="bg-blue-50 rounded-xl p-6">
+                                                    <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                                                        <Building2 size={20} />
+                                                        Business & Contact Details
+                                                    </h3>
+                                                    <div className="grid grid-cols-2 gap-4">
+                                                        {details.lead.businessName && (
+                                                            <div>
+                                                                <div className="text-xs text-gray-500 mb-1 flex items-center gap-1">
+                                                                    <Building2 size={12} />
+                                                                    Business Name
+                                                                </div>
+                                                                <div className="text-sm font-medium text-gray-900">
+                                                                    {details.lead.businessName}
+                                                                </div>
                                                             </div>
-                                                            <div className="text-sm font-medium text-gray-900">
-                                                                {details.lead.businessName}
+                                                        )}
+                                                        {details.lead.pageName && (
+                                                            <div>
+                                                                <div className="text-xs text-gray-500 mb-1 flex items-center gap-1">
+                                                                    <Globe size={12} />
+                                                                    Page Name
+                                                                </div>
+                                                                <div className="text-sm font-medium text-gray-900">
+                                                                    {details.lead.pageName}
+                                                                </div>
                                                             </div>
-                                                        </div>
-                                                    )}
-                                                    {details.lead.pageName && (
-                                                        <div>
-                                                            <div className="text-xs text-gray-500 mb-1 flex items-center gap-1">
-                                                                <Globe size={12} />
-                                                                Page Name
+                                                        )}
+                                                        {details.lead.pageLink && (
+                                                            <div>
+                                                                <div className="text-xs text-gray-500 mb-1 flex items-center gap-1">
+                                                                    <Link2 size={12} />
+                                                                    Page Link
+                                                                </div>
+                                                                <div className="text-sm font-medium text-gray-900">
+                                                                    <a
+                                                                        href={details.lead.pageLink}
+                                                                        target="_blank"
+                                                                        rel="noopener noreferrer"
+                                                                        className="text-blue-600 hover:text-blue-800 hover:underline break-all"
+                                                                    >
+                                                                        {details.lead.pageLink}
+                                                                    </a>
+                                                                </div>
                                                             </div>
-                                                            <div className="text-sm font-medium text-gray-900">
-                                                                {details.lead.pageName}
+                                                        )}
+                                                        {details.lead.decisionMakerName && (
+                                                            <div>
+                                                                <div className="text-xs text-gray-500 mb-1 flex items-center gap-1">
+                                                                    <UserCircle size={12} />
+                                                                    Decision Maker
+                                                                </div>
+                                                                <div className="text-sm font-medium text-gray-900">
+                                                                    {details.lead.decisionMakerName}
+                                                                </div>
                                                             </div>
-                                                        </div>
-                                                    )}
-                                                    {details.lead.pageLink && (
-                                                        <div>
-                                                            <div className="text-xs text-gray-500 mb-1 flex items-center gap-1">
-                                                                <Link2 size={12} />
-                                                                Page Link
+                                                        )}
+                                                        {details.lead.decisionMakerPosition && (
+                                                            <div>
+                                                                <div className="text-xs text-gray-500 mb-1 flex items-center gap-1">
+                                                                    <Briefcase size={12} />
+                                                                    Position
+                                                                </div>
+                                                                <div className="text-sm font-medium text-gray-900">
+                                                                    {details.lead.decisionMakerPosition}
+                                                                </div>
                                                             </div>
-                                                            <div className="text-sm font-medium text-gray-900">
-                                                                <a 
-                                                                    href={details.lead.pageLink} 
-                                                                    target="_blank" 
-                                                                    rel="noopener noreferrer"
-                                                                    className="text-blue-600 hover:text-blue-800 hover:underline break-all"
-                                                                >
-                                                                    {details.lead.pageLink}
-                                                                </a>
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                    {details.lead.decisionMakerName && (
-                                                        <div>
-                                                            <div className="text-xs text-gray-500 mb-1 flex items-center gap-1">
-                                                                <UserCircle size={12} />
-                                                                Decision Maker
-                                                            </div>
-                                                            <div className="text-sm font-medium text-gray-900">
-                                                                {details.lead.decisionMakerName}
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                    {details.lead.decisionMakerPosition && (
-                                                        <div>
-                                                            <div className="text-xs text-gray-500 mb-1 flex items-center gap-1">
-                                                                <Briefcase size={12} />
-                                                                Position
-                                                            </div>
-                                                            <div className="text-sm font-medium text-gray-900">
-                                                                {details.lead.decisionMakerPosition}
+                                                        )}
+                                                    </div>
+                                                    {details.lead.additionalContactInfo && (
+                                                        <div className="mt-4 pt-4 border-t border-blue-200">
+                                                            <div className="text-xs text-gray-500 mb-3 font-semibold">Additional Information</div>
+                                                            <div className="grid grid-cols-2 gap-3">
+                                                                {details.lead.additionalContactInfo.owner && (
+                                                                    <div>
+                                                                        <div className="text-xs text-gray-500 mb-1 flex items-center gap-1">
+                                                                            <UserCircle size={12} />
+                                                                            Owner
+                                                                        </div>
+                                                                        <div className="text-sm font-medium text-gray-900">
+                                                                            {details.lead.additionalContactInfo.owner}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                                {details.lead.additionalContactInfo.address && (
+                                                                    <div className="col-span-2">
+                                                                        <div className="text-xs text-gray-500 mb-1 flex items-center gap-1">
+                                                                            <Building2 size={12} />
+                                                                            Address
+                                                                        </div>
+                                                                        <div className="text-sm font-medium text-gray-900">
+                                                                            {details.lead.additionalContactInfo.address}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                                {details.lead.additionalContactInfo.website && (
+                                                                    <div className="col-span-2">
+                                                                        <div className="text-xs text-gray-500 mb-1 flex items-center gap-1">
+                                                                            <Globe size={12} />
+                                                                            Website
+                                                                        </div>
+                                                                        <div className="text-sm font-medium text-gray-900">
+                                                                            <a
+                                                                                href={details.lead.additionalContactInfo.website.startsWith('http')
+                                                                                    ? details.lead.additionalContactInfo.website
+                                                                                    : `https://${details.lead.additionalContactInfo.website}`}
+                                                                                target="_blank"
+                                                                                rel="noopener noreferrer"
+                                                                                className="text-blue-600 hover:text-blue-800 hover:underline"
+                                                                            >
+                                                                                {details.lead.additionalContactInfo.website}
+                                                                            </a>
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                                {details.lead.additionalContactInfo.industry && (
+                                                                    <div>
+                                                                        <div className="text-xs text-gray-500 mb-1">Industry</div>
+                                                                        <div className="text-sm font-medium text-gray-900">
+                                                                            {details.lead.additionalContactInfo.industry}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                                {details.lead.additionalContactInfo.businessType && (
+                                                                    <div>
+                                                                        <div className="text-xs text-gray-500 mb-1">Business Type</div>
+                                                                        <div className="text-sm font-medium text-gray-900">
+                                                                            {details.lead.additionalContactInfo.businessType}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                                {details.lead.additionalContactInfo.companySize && (
+                                                                    <div>
+                                                                        <div className="text-xs text-gray-500 mb-1">Company Size</div>
+                                                                        <div className="text-sm font-medium text-gray-900">
+                                                                            {details.lead.additionalContactInfo.companySize}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                                {details.lead.additionalContactInfo.yearsInBusiness && (
+                                                                    <div>
+                                                                        <div className="text-xs text-gray-500 mb-1">Years in Business</div>
+                                                                        <div className="text-sm font-medium text-gray-900">
+                                                                            {details.lead.additionalContactInfo.yearsInBusiness}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                                {details.lead.additionalContactInfo.productsServices && (
+                                                                    <div className="col-span-2">
+                                                                        <div className="text-xs text-gray-500 mb-1">Products/Services</div>
+                                                                        <div className="text-sm font-medium text-gray-900">
+                                                                            {details.lead.additionalContactInfo.productsServices}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                                {details.lead.additionalContactInfo.socialMedia && (
+                                                                    <div className="col-span-2">
+                                                                        <div className="text-xs text-gray-500 mb-1">Social Media</div>
+                                                                        <div className="text-sm font-medium text-gray-900">
+                                                                            {details.lead.additionalContactInfo.socialMedia}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                                {details.lead.additionalContactInfo.landline && (
+                                                                    <div>
+                                                                        <div className="text-xs text-gray-500 mb-1 flex items-center gap-1">
+                                                                            <Phone size={12} />
+                                                                            Landline
+                                                                        </div>
+                                                                        <div className="text-sm font-medium text-gray-900">
+                                                                            {details.lead.additionalContactInfo.landline}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                                {details.lead.additionalContactInfo.taxId && (
+                                                                    <div>
+                                                                        <div className="text-xs text-gray-500 mb-1">Tax ID / Registration</div>
+                                                                        <div className="text-sm font-medium text-gray-900">
+                                                                            {details.lead.additionalContactInfo.taxId}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                                {/* Display any other fields not explicitly handled above */}
+                                                                {Object.entries(details.lead.additionalContactInfo)
+                                                                    .filter(([key]) => !['owner', 'address', 'website', 'industry', 'businessType',
+                                                                        'companySize', 'yearsInBusiness', 'productsServices', 'socialMedia',
+                                                                        'landline', 'taxId'].includes(key))
+                                                                    .map(([key, value]) => (
+                                                                        <div key={key}>
+                                                                            <div className="text-xs text-gray-500 mb-1 capitalize">
+                                                                                {key.replace(/_/g, ' ')}
+                                                                            </div>
+                                                                            <div className="text-sm font-medium text-gray-900">
+                                                                                {typeof value === 'string' ? value : JSON.stringify(value)}
+                                                                            </div>
+                                                                        </div>
+                                                                    ))}
                                                             </div>
                                                         </div>
                                                     )}
                                                 </div>
-                                                {details.lead.additionalContactInfo && (
-                                                    <div className="mt-4 pt-4 border-t border-blue-200">
-                                                        <div className="text-xs text-gray-500 mb-3 font-semibold">Additional Information</div>
-                                                        <div className="grid grid-cols-2 gap-3">
-                                                            {details.lead.additionalContactInfo.owner && (
-                                                                <div>
-                                                                    <div className="text-xs text-gray-500 mb-1 flex items-center gap-1">
-                                                                        <UserCircle size={12} />
-                                                                        Owner
-                                                                    </div>
-                                                                    <div className="text-sm font-medium text-gray-900">
-                                                                        {details.lead.additionalContactInfo.owner}
-                                                                    </div>
-                                                                </div>
-                                                            )}
-                                                            {details.lead.additionalContactInfo.address && (
-                                                                <div className="col-span-2">
-                                                                    <div className="text-xs text-gray-500 mb-1 flex items-center gap-1">
-                                                                        <Building2 size={12} />
-                                                                        Address
-                                                                    </div>
-                                                                    <div className="text-sm font-medium text-gray-900">
-                                                                        {details.lead.additionalContactInfo.address}
-                                                                    </div>
-                                                                </div>
-                                                            )}
-                                                            {details.lead.additionalContactInfo.website && (
-                                                                <div className="col-span-2">
-                                                                    <div className="text-xs text-gray-500 mb-1 flex items-center gap-1">
-                                                                        <Globe size={12} />
-                                                                        Website
-                                                                    </div>
-                                                                    <div className="text-sm font-medium text-gray-900">
-                                                                        <a 
-                                                                            href={details.lead.additionalContactInfo.website.startsWith('http') 
-                                                                                ? details.lead.additionalContactInfo.website 
-                                                                                : `https://${details.lead.additionalContactInfo.website}`}
-                                                                            target="_blank" 
-                                                                            rel="noopener noreferrer"
-                                                                            className="text-blue-600 hover:text-blue-800 hover:underline"
-                                                                        >
-                                                                            {details.lead.additionalContactInfo.website}
-                                                                        </a>
-                                                                    </div>
-                                                                </div>
-                                                            )}
-                                                            {details.lead.additionalContactInfo.industry && (
-                                                                <div>
-                                                                    <div className="text-xs text-gray-500 mb-1">Industry</div>
-                                                                    <div className="text-sm font-medium text-gray-900">
-                                                                        {details.lead.additionalContactInfo.industry}
-                                                                    </div>
-                                                                </div>
-                                                            )}
-                                                            {details.lead.additionalContactInfo.businessType && (
-                                                                <div>
-                                                                    <div className="text-xs text-gray-500 mb-1">Business Type</div>
-                                                                    <div className="text-sm font-medium text-gray-900">
-                                                                        {details.lead.additionalContactInfo.businessType}
-                                                                    </div>
-                                                                </div>
-                                                            )}
-                                                            {details.lead.additionalContactInfo.companySize && (
-                                                                <div>
-                                                                    <div className="text-xs text-gray-500 mb-1">Company Size</div>
-                                                                    <div className="text-sm font-medium text-gray-900">
-                                                                        {details.lead.additionalContactInfo.companySize}
-                                                                    </div>
-                                                                </div>
-                                                            )}
-                                                            {details.lead.additionalContactInfo.yearsInBusiness && (
-                                                                <div>
-                                                                    <div className="text-xs text-gray-500 mb-1">Years in Business</div>
-                                                                    <div className="text-sm font-medium text-gray-900">
-                                                                        {details.lead.additionalContactInfo.yearsInBusiness}
-                                                                    </div>
-                                                                </div>
-                                                            )}
-                                                            {details.lead.additionalContactInfo.productsServices && (
-                                                                <div className="col-span-2">
-                                                                    <div className="text-xs text-gray-500 mb-1">Products/Services</div>
-                                                                    <div className="text-sm font-medium text-gray-900">
-                                                                        {details.lead.additionalContactInfo.productsServices}
-                                                                    </div>
-                                                                </div>
-                                                            )}
-                                                            {details.lead.additionalContactInfo.socialMedia && (
-                                                                <div className="col-span-2">
-                                                                    <div className="text-xs text-gray-500 mb-1">Social Media</div>
-                                                                    <div className="text-sm font-medium text-gray-900">
-                                                                        {details.lead.additionalContactInfo.socialMedia}
-                                                                    </div>
-                                                                </div>
-                                                            )}
-                                                            {details.lead.additionalContactInfo.landline && (
-                                                                <div>
-                                                                    <div className="text-xs text-gray-500 mb-1 flex items-center gap-1">
-                                                                        <Phone size={12} />
-                                                                        Landline
-                                                                    </div>
-                                                                    <div className="text-sm font-medium text-gray-900">
-                                                                        {details.lead.additionalContactInfo.landline}
-                                                                    </div>
-                                                                </div>
-                                                            )}
-                                                            {details.lead.additionalContactInfo.taxId && (
-                                                                <div>
-                                                                    <div className="text-xs text-gray-500 mb-1">Tax ID / Registration</div>
-                                                                    <div className="text-sm font-medium text-gray-900">
-                                                                        {details.lead.additionalContactInfo.taxId}
-                                                                    </div>
-                                                                </div>
-                                                            )}
-                                                            {/* Display any other fields not explicitly handled above */}
-                                                            {Object.entries(details.lead.additionalContactInfo)
-                                                                .filter(([key]) => !['owner', 'address', 'website', 'industry', 'businessType', 
-                                                                    'companySize', 'yearsInBusiness', 'productsServices', 'socialMedia', 
-                                                                    'landline', 'taxId'].includes(key))
-                                                                .map(([key, value]) => (
-                                                                    <div key={key}>
-                                                                        <div className="text-xs text-gray-500 mb-1 capitalize">
-                                                                            {key.replace(/_/g, ' ')}
-                                                                        </div>
-                                                                        <div className="text-sm font-medium text-gray-900">
-                                                                            {typeof value === 'string' ? value : JSON.stringify(value)}
-                                                                        </div>
-                                                                    </div>
-                                                                ))}
-                                                        </div>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )}
+                                            )}
 
                                         {/* ML Context Features */}
                                         {details.mlContextFeatures && (
@@ -744,13 +764,12 @@ export default function LeadDetailsModal({ leadId, isOpen, onClose }: LeadDetail
                                                             </div>
                                                             <div className="flex items-center gap-3">
                                                                 <span
-                                                                    className={`text-sm font-semibold ${
-                                                                        event.rewardValue > 0
-                                                                            ? 'text-green-600'
-                                                                            : event.rewardValue < 0
+                                                                    className={`text-sm font-semibold ${event.rewardValue > 0
+                                                                        ? 'text-green-600'
+                                                                        : event.rewardValue < 0
                                                                             ? 'text-red-600'
                                                                             : 'text-gray-500'
-                                                                    }`}
+                                                                        }`}
                                                                 >
                                                                     {formatRewardValue(event.rewardValue)}
                                                                 </span>
@@ -782,11 +801,10 @@ export default function LeadDetailsModal({ leadId, isOpen, onClose }: LeadDetail
                                                 {details.conversationHistory.map((msg, idx) => (
                                                     <div
                                                         key={idx}
-                                                        className={`rounded-lg p-4 ${
-                                                            msg.role === 'user'
-                                                                ? 'bg-blue-50 border border-blue-200 ml-8'
-                                                                : 'bg-gray-50 border border-gray-200 mr-8'
-                                                        }`}
+                                                        className={`rounded-lg p-4 ${msg.role === 'user'
+                                                            ? 'bg-blue-50 border border-blue-200 ml-8'
+                                                            : 'bg-gray-50 border border-gray-200 mr-8'
+                                                            }`}
                                                     >
                                                         <div className="flex items-center justify-between mb-2">
                                                             <span className="text-xs font-semibold text-gray-600 uppercase">
@@ -806,6 +824,210 @@ export default function LeadDetailsModal({ leadId, isOpen, onClose }: LeadDetail
                                             <div className="bg-gray-50 rounded-xl p-6 text-center text-gray-500">
                                                 <MessageSquare size={48} className="mx-auto mb-4 opacity-50" />
                                                 <p>No conversation history available.</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {activeTab === 'analysis' && (
+                                    <div className="space-y-6">
+                                        <div className="flex items-center justify-between">
+                                            <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                                                🏆 Conversation Analysis
+                                            </h3>
+                                            <button
+                                                onClick={async () => {
+                                                    setAnalysisLoading(true);
+                                                    try {
+                                                        const res = await fetch(`/api/ml/analytics/conversation-analysis?type=analyze&senderId=${details.lead.senderId}&limit=50`);
+                                                        const data = await res.json();
+                                                        setAnalysisData(data);
+                                                    } catch (err) {
+                                                        console.error('Analysis error:', err);
+                                                    } finally {
+                                                        setAnalysisLoading(false);
+                                                    }
+                                                }}
+                                                disabled={analysisLoading}
+                                                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+                                            >
+                                                {analysisLoading ? '⏳ Analyzing...' : '🔍 Run Analysis'}
+                                            </button>
+                                        </div>
+
+                                        {/* Stored Analysis Summary */}
+                                        {details.lead.conversationAnalysis && !analysisData && (
+                                            <div className="bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 rounded-xl p-6">
+                                                <div className="flex items-center gap-3 mb-4">
+                                                    <div className="text-4xl font-bold text-purple-600">
+                                                        {details.lead.conversationAnalysis.overallScore}
+                                                    </div>
+                                                    <div>
+                                                        <div className="text-sm font-medium text-gray-700">Overall Score</div>
+                                                        <div className="text-xs text-gray-500">
+                                                            Analyzed on {new Date(details.lead.conversationAnalysis.analyzedAt).toLocaleDateString()} • Stage: {details.lead.conversationAnalysis.triggerStage}
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div className="grid grid-cols-5 gap-2 mb-4">
+                                                    <div className="text-center p-2 bg-green-100 rounded-lg">
+                                                        <div className="text-lg font-bold text-green-700">♔ {details.lead.conversationAnalysis.excellentCount}</div>
+                                                        <div className="text-xs text-green-600">Excellent</div>
+                                                    </div>
+                                                    <div className="text-center p-2 bg-blue-100 rounded-lg">
+                                                        <div className="text-lg font-bold text-blue-700">✓ {details.lead.conversationAnalysis.goodCount}</div>
+                                                        <div className="text-xs text-blue-600">Good</div>
+                                                    </div>
+                                                    <div className="text-center p-2 bg-yellow-100 rounded-lg">
+                                                        <div className="text-lg font-bold text-yellow-700">?! {details.lead.conversationAnalysis.questionableCount}</div>
+                                                        <div className="text-xs text-yellow-600">Questionable</div>
+                                                    </div>
+                                                    <div className="text-center p-2 bg-orange-100 rounded-lg">
+                                                        <div className="text-lg font-bold text-orange-700">? {details.lead.conversationAnalysis.mistakeCount}</div>
+                                                        <div className="text-xs text-orange-600">Mistake</div>
+                                                    </div>
+                                                    <div className="text-center p-2 bg-red-100 rounded-lg">
+                                                        <div className="text-lg font-bold text-red-700">?? {details.lead.conversationAnalysis.blunderCount}</div>
+                                                        <div className="text-xs text-red-600">Blunder</div>
+                                                    </div>
+                                                </div>
+
+                                                {details.lead.conversationAnalysis.keyInsights?.length > 0 && (
+                                                    <div className="mb-3">
+                                                        <div className="text-xs font-semibold text-gray-600 mb-1">Key Insights</div>
+                                                        <ul className="text-sm text-gray-700 space-y-1">
+                                                            {details.lead.conversationAnalysis.keyInsights.map((insight, i) => (
+                                                                <li key={i} className="flex items-start gap-2">
+                                                                    <span className="text-green-500">✓</span>
+                                                                    {insight}
+                                                                </li>
+                                                            ))}
+                                                        </ul>
+                                                    </div>
+                                                )}
+
+                                                {details.lead.conversationAnalysis.improvementAreas?.length > 0 && (
+                                                    <div>
+                                                        <div className="text-xs font-semibold text-gray-600 mb-1">Areas for Improvement</div>
+                                                        <ul className="text-sm text-gray-700 space-y-1">
+                                                            {details.lead.conversationAnalysis.improvementAreas.map((area, i) => (
+                                                                <li key={i} className="flex items-start gap-2">
+                                                                    <span className="text-yellow-500">⚡</span>
+                                                                    {area}
+                                                                </li>
+                                                            ))}
+                                                        </ul>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {/* Live Analysis Results */}
+                                        {analysisData && (
+                                            <div className="space-y-4">
+                                                <div className="bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 rounded-xl p-6">
+                                                    <div className="flex items-center gap-3 mb-4">
+                                                        <div className="text-4xl font-bold text-purple-600">
+                                                            {analysisData.summary?.overallScore || 0}
+                                                        </div>
+                                                        <div>
+                                                            <div className="text-sm font-medium text-gray-700">Overall Score</div>
+                                                            <div className="text-xs text-gray-500">
+                                                                {analysisData.messages?.length || 0} messages analyzed
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="grid grid-cols-5 gap-2 mb-4">
+                                                        <div className="text-center p-2 bg-green-100 rounded-lg">
+                                                            <div className="text-lg font-bold text-green-700">♔ {analysisData.summary?.excellentCount || 0}</div>
+                                                            <div className="text-xs text-green-600">Excellent</div>
+                                                        </div>
+                                                        <div className="text-center p-2 bg-blue-100 rounded-lg">
+                                                            <div className="text-lg font-bold text-blue-700">✓ {analysisData.summary?.goodCount || 0}</div>
+                                                            <div className="text-xs text-blue-600">Good</div>
+                                                        </div>
+                                                        <div className="text-center p-2 bg-yellow-100 rounded-lg">
+                                                            <div className="text-lg font-bold text-yellow-700">?! {analysisData.summary?.questionableCount || 0}</div>
+                                                            <div className="text-xs text-yellow-600">Questionable</div>
+                                                        </div>
+                                                        <div className="text-center p-2 bg-orange-100 rounded-lg">
+                                                            <div className="text-lg font-bold text-orange-700">? {analysisData.summary?.mistakeCount || 0}</div>
+                                                            <div className="text-xs text-orange-600">Mistake</div>
+                                                        </div>
+                                                        <div className="text-center p-2 bg-red-100 rounded-lg">
+                                                            <div className="text-lg font-bold text-red-700">?? {analysisData.summary?.blunderCount || 0}</div>
+                                                            <div className="text-xs text-red-600">Blunder</div>
+                                                        </div>
+                                                    </div>
+
+                                                    {analysisData.summary?.keyInsights?.length > 0 && (
+                                                        <div className="mb-3">
+                                                            <div className="text-xs font-semibold text-gray-600 mb-1">Key Insights</div>
+                                                            <ul className="text-sm text-gray-700 space-y-1">
+                                                                {analysisData.summary.keyInsights.map((insight: string, i: number) => (
+                                                                    <li key={i} className="flex items-start gap-2">
+                                                                        <span className="text-green-500">✓</span>
+                                                                        {insight}
+                                                                    </li>
+                                                                ))}
+                                                            </ul>
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {/* Message-by-message analysis */}
+                                                <div className="space-y-3 max-h-[400px] overflow-y-auto">
+                                                    {analysisData.messages?.filter((m: any) => m.role === 'assistant' && m.analysis).map((msg: any, idx: number) => {
+                                                        const ratingColors: Record<string, string> = {
+                                                            excellent: 'border-green-500 bg-green-50',
+                                                            good: 'border-blue-500 bg-blue-50',
+                                                            questionable: 'border-yellow-500 bg-yellow-50',
+                                                            mistake: 'border-orange-500 bg-orange-50',
+                                                            blunder: 'border-red-500 bg-red-50',
+                                                        };
+                                                        const ratingIcons: Record<string, string> = {
+                                                            excellent: '♔',
+                                                            good: '✓',
+                                                            questionable: '?!',
+                                                            mistake: '?',
+                                                            blunder: '??',
+                                                        };
+                                                        return (
+                                                            <div key={idx} className={`border-l-4 rounded-lg p-4 ${ratingColors[msg.analysis?.rating] || 'border-gray-300 bg-gray-50'}`}>
+                                                                <div className="flex items-center gap-2 mb-2">
+                                                                    <span className="text-lg">{ratingIcons[msg.analysis?.rating] || '?'}</span>
+                                                                    <span className="text-sm font-semibold capitalize">{msg.analysis?.rating}</span>
+                                                                    <span className="text-xs text-gray-500">Score: {msg.analysis?.score}</span>
+                                                                </div>
+                                                                <div className="text-sm text-gray-800 mb-2">{msg.content}</div>
+                                                                {msg.analysis?.explanation && (
+                                                                    <div className="text-xs text-gray-600 mb-2 italic">{msg.analysis.explanation}</div>
+                                                                )}
+                                                                {msg.analysis?.betterResponse && (
+                                                                    <div className="bg-white border border-gray-200 rounded p-2 mt-2">
+                                                                        <div className="text-xs font-semibold text-green-700 mb-1">💡 Better Response:</div>
+                                                                        <div className="text-sm text-gray-700">{msg.analysis.betterResponse}</div>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {!details.lead.conversationAnalysis && !analysisData && !analysisLoading && (
+                                            <div className="bg-gray-50 rounded-xl p-8 text-center">
+                                                <div className="text-5xl mb-4">🏆</div>
+                                                <h4 className="text-lg font-semibold text-gray-700 mb-2">No Analysis Yet</h4>
+                                                <p className="text-sm text-gray-500 mb-4">
+                                                    Click &quot;Run Analysis&quot; to analyze this conversation like a chess engine analyzes games.
+                                                </p>
+                                                <p className="text-xs text-gray-400">
+                                                    Analysis runs automatically when leads move to lost/won/closed stages.
+                                                </p>
                                             </div>
                                         )}
                                     </div>
