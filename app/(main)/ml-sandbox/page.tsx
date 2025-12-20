@@ -6,6 +6,7 @@ import {
     BookOpen, Target, Settings, AlertTriangle, CheckCircle,
     Database, Beaker
 } from 'lucide-react';
+import Header from '../../components/Header';
 
 interface SandboxSettings {
     id: number;
@@ -291,10 +292,11 @@ export default function MLSandboxPage() {
     };
 
     const cardStyle = {
-        background: '#1e293b',
+        background: '#ffffff',
         borderRadius: '12px',
         padding: '20px',
-        border: '1px solid #334155',
+        border: '1px solid #e5e7eb',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
     };
 
     const buttonStyle = {
@@ -311,482 +313,471 @@ export default function MLSandboxPage() {
     const inputStyle = {
         width: '100%',
         padding: '12px',
-        background: '#0f172a',
-        border: '1px solid #334155',
+        background: '#f9fafb',
+        border: '1px solid #e5e7eb',
         borderRadius: '8px',
-        color: '#fff',
+        color: '#1f2937',
         fontSize: '14px',
     };
 
     return (
-        <div style={{ minHeight: '100vh', background: '#ffffff', overflow: 'auto' }}>
-            <main style={{ padding: '24px', maxWidth: '1400px', margin: '0 auto' }}>
-                {/* Header */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
-                    <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
-                            <Beaker size={32} color="#a855f7" />
-                            <h1 style={{ fontSize: '28px', fontWeight: 700, color: '#fff', margin: 0 }}>
-                                ML Sandbox
-                            </h1>
-                            <span style={{
-                                background: 'linear-gradient(135deg, #a855f7 0%, #6366f1 100%)',
-                                color: '#fff',
-                                padding: '4px 12px',
-                                borderRadius: '20px',
-                                fontSize: '12px',
-                                fontWeight: 600,
-                            }}>
-                                EXPERIMENTAL
-                            </span>
+        <div className="flex flex-col h-full">
+            <Header />
+            <div className="flex-1 overflow-auto bg-white">
+                <main style={{ padding: '24px', maxWidth: '1400px', margin: '0 auto' }}>
+                    {/* Page Title */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
+                        <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+                                <Beaker size={32} color="#0d9488" />
+                                <h1 style={{ fontSize: '28px', fontWeight: 700, color: '#1f2937', margin: 0 }}>
+                                    ML Sandbox
+                                </h1>
+                                <span style={{
+                                    background: 'linear-gradient(135deg, #0d9488 0%, #14b8a6 100%)',
+                                    color: '#fff',
+                                    padding: '4px 12px',
+                                    borderRadius: '20px',
+                                    fontSize: '12px',
+                                    fontWeight: 600,
+                                }}>
+                                    EXPERIMENTAL
+                                </span>
+                            </div>
+                            <p style={{ color: '#6b7280', marginTop: '4px' }}>
+                                Safe environment for AI learning experimentation. Not connected to Facebook.
+                            </p>
                         </div>
-                        <p style={{ color: '#94a3b8', marginTop: '4px' }}>
-                            Safe environment for AI learning experimentation. Not connected to Facebook.
-                        </p>
+                        <div style={{ display: 'flex', gap: '12px' }}>
+                            <button
+                                onClick={handleSyncFromProduction}
+                                disabled={syncing}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${syncing ? 'bg-gray-200 text-gray-500' : 'bg-teal-600 text-white hover:bg-teal-700'}`}
+                            >
+                                <RefreshCw size={16} className={syncing ? 'animate-spin' : ''} />
+                                {syncing ? 'Syncing...' : 'Sync from Production'}
+                            </button>
+                            <button
+                                onClick={handleClearSandbox}
+                                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-red-600 text-white hover:bg-red-700 transition-colors"
+                            >
+                                <Trash2 size={16} />
+                                Clear Sandbox
+                            </button>
+                        </div>
                     </div>
-                    <div style={{ display: 'flex', gap: '12px' }}>
-                        <button
-                            onClick={handleSyncFromProduction}
-                            disabled={syncing}
-                            style={{
-                                ...buttonStyle,
-                                background: syncing ? '#334155' : '#3b82f6',
-                                color: '#fff',
-                            }}
-                        >
-                            <RefreshCw size={16} className={syncing ? 'animate-spin' : ''} />
-                            {syncing ? 'Syncing...' : 'Sync from Production'}
-                        </button>
-                        <button
-                            onClick={handleClearSandbox}
-                            style={{
-                                ...buttonStyle,
-                                background: '#dc2626',
-                                color: '#fff',
-                            }}
-                        >
-                            <Trash2 size={16} />
-                            Clear Sandbox
-                        </button>
-                    </div>
-                </div>
 
-                {/* Message Toast */}
-                {message && (
+                    {/* Message Toast */}
+                    {message && (
+                        <div style={{
+                            position: 'fixed',
+                            top: '20px',
+                            right: '20px',
+                            padding: '12px 20px',
+                            borderRadius: '8px',
+                            background: message.type === 'success' ? '#22c55e' : '#dc2626',
+                            color: '#fff',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            zIndex: 1000,
+                            boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                        }}>
+                            {message.type === 'success' ? <CheckCircle size={18} /> : <AlertTriangle size={18} />}
+                            {message.text}
+                        </div>
+                    )}
+
+                    {/* Status Cards */}
                     <div style={{
-                        position: 'fixed',
-                        top: '20px',
-                        right: '20px',
-                        padding: '12px 20px',
-                        borderRadius: '8px',
-                        background: message.type === 'success' ? '#22c55e' : '#dc2626',
-                        color: '#fff',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        zIndex: 1000,
-                        boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+                        gap: '16px',
+                        marginBottom: '24px'
                     }}>
-                        {message.type === 'success' ? <CheckCircle size={18} /> : <AlertTriangle size={18} />}
-                        {message.text}
+                        <div style={cardStyle}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                                <FileText size={16} color="#0d9488" />
+                                <span style={{ color: '#6b7280', fontSize: '14px' }}>Documents</span>
+                            </div>
+                            <p style={{ color: '#1f2937', fontSize: '24px', fontWeight: 600, margin: 0 }}>
+                                {status?.counts?.documents || 0}
+                            </p>
+                        </div>
+                        <div style={cardStyle}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                                <BookOpen size={16} color="#0d9488" />
+                                <span style={{ color: '#6b7280', fontSize: '14px' }}>Rules</span>
+                            </div>
+                            <p style={{ color: '#1f2937', fontSize: '24px', fontWeight: 600, margin: 0 }}>
+                                {status?.counts?.rules || 0}
+                            </p>
+                        </div>
+                        <div style={cardStyle}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                                <Target size={16} color="#0d9488" />
+                                <span style={{ color: '#6b7280', fontSize: '14px' }}>Goals</span>
+                            </div>
+                            <p style={{ color: '#1f2937', fontSize: '24px', fontWeight: 600, margin: 0 }}>
+                                {status?.counts?.goals || 0}
+                            </p>
+                        </div>
+                        <div style={cardStyle}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                                <Database size={16} color="#0d9488" />
+                                <span style={{ color: '#6b7280', fontSize: '14px' }}>Last Sync</span>
+                            </div>
+                            <p style={{ color: '#1f2937', fontSize: '14px', margin: 0 }}>
+                                {status?.lastSync
+                                    ? new Date(status.lastSync).toLocaleDateString('en-PH', {
+                                        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+                                    })
+                                    : 'Never'
+                                }
+                            </p>
+                        </div>
                     </div>
-                )}
 
-                {/* Status Cards */}
-                <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-                    gap: '16px',
-                    marginBottom: '24px'
-                }}>
-                    <div style={cardStyle}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                            <FileText size={16} color="#3b82f6" />
-                            <span style={{ color: '#94a3b8', fontSize: '14px' }}>Documents</span>
-                        </div>
-                        <p style={{ color: '#fff', fontSize: '24px', fontWeight: 600, margin: 0 }}>
-                            {status?.counts?.documents || 0}
-                        </p>
+                    {/* Tabs */}
+                    <div className="h-12 bg-white border-b border-gray-200 flex items-center gap-1 mb-6">
+                        {(['settings', 'documents', 'rules', 'goals'] as const).map((tab) => (
+                            <button
+                                key={tab}
+                                onClick={() => setActiveTab(tab)}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors capitalize ${activeTab === tab
+                                    ? 'bg-teal-50 text-teal-700 border border-teal-200'
+                                    : 'text-gray-600 hover:bg-gray-100'
+                                    }`}
+                            >
+                                {tab}
+                            </button>
+                        ))}
                     </div>
-                    <div style={cardStyle}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                            <BookOpen size={16} color="#22c55e" />
-                            <span style={{ color: '#94a3b8', fontSize: '14px' }}>Rules</span>
-                        </div>
-                        <p style={{ color: '#fff', fontSize: '24px', fontWeight: 600, margin: 0 }}>
-                            {status?.counts?.rules || 0}
-                        </p>
-                    </div>
-                    <div style={cardStyle}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                            <Target size={16} color="#eab308" />
-                            <span style={{ color: '#94a3b8', fontSize: '14px' }}>Goals</span>
-                        </div>
-                        <p style={{ color: '#fff', fontSize: '24px', fontWeight: 600, margin: 0 }}>
-                            {status?.counts?.goals || 0}
-                        </p>
-                    </div>
-                    <div style={cardStyle}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                            <Database size={16} color="#a855f7" />
-                            <span style={{ color: '#94a3b8', fontSize: '14px' }}>Last Sync</span>
-                        </div>
-                        <p style={{ color: '#fff', fontSize: '14px', margin: 0 }}>
-                            {status?.lastSync
-                                ? new Date(status.lastSync).toLocaleDateString('en-PH', {
-                                    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
-                                })
-                                : 'Never'
-                            }
-                        </p>
-                    </div>
-                </div>
 
-                {/* Tabs */}
-                <div style={{ display: 'flex', gap: '8px', marginBottom: '24px' }}>
-                    {(['settings', 'documents', 'rules', 'goals'] as const).map((tab) => (
-                        <button
-                            key={tab}
-                            onClick={() => setActiveTab(tab)}
-                            style={{
-                                padding: '10px 20px',
-                                background: activeTab === tab ? '#a855f7' : '#1e293b',
-                                border: activeTab === tab ? 'none' : '1px solid #334155',
-                                borderRadius: '8px',
-                                color: '#fff',
-                                cursor: 'pointer',
-                                fontWeight: activeTab === tab ? 600 : 400,
-                                textTransform: 'capitalize',
-                            }}
-                        >
-                            {tab}
-                        </button>
-                    ))}
-                </div>
+                    {loading ? (
+                        <div style={{ textAlign: 'center', padding: '60px', color: '#64748b' }}>
+                            Loading sandbox data...
+                        </div>
+                    ) : (
+                        <>
+                            {/* Settings Tab */}
+                            {activeTab === 'settings' && (
+                                <div style={cardStyle}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                                        <h3 style={{ color: '#1f2937', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <Settings size={20} color="#0d9488" />
+                                            Bot Settings (Sandbox)
+                                        </h3>
+                                        {!editingSettings ? (
+                                            <button
+                                                onClick={() => {
+                                                    setEditSettings({
+                                                        botName: settings?.bot_name || '',
+                                                        botTone: settings?.bot_tone || '',
+                                                        botInstructions: settings?.bot_instructions || '',
+                                                    });
+                                                    setEditingSettings(true);
+                                                }}
+                                                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-teal-600 text-white hover:bg-teal-700 transition-colors"
+                                            >
+                                                <Edit2 size={14} /> Edit
+                                            </button>
+                                        ) : (
+                                            <div style={{ display: 'flex', gap: '8px' }}>
+                                                <button onClick={handleSaveSettings} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-teal-600 text-white hover:bg-teal-700 transition-colors">
+                                                    <Save size={14} /> Save
+                                                </button>
+                                                <button onClick={() => setEditingSettings(false)} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors">
+                                                    <X size={14} /> Cancel
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
 
-                {loading ? (
-                    <div style={{ textAlign: 'center', padding: '60px', color: '#64748b' }}>
-                        Loading sandbox data...
-                    </div>
-                ) : (
-                    <>
-                        {/* Settings Tab */}
-                        {activeTab === 'settings' && (
-                            <div style={cardStyle}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                                    <h3 style={{ color: '#fff', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        <Settings size={20} />
-                                        Bot Settings (Sandbox)
-                                    </h3>
-                                    {!editingSettings ? (
-                                        <button
-                                            onClick={() => {
-                                                setEditSettings({
-                                                    botName: settings?.bot_name || '',
-                                                    botTone: settings?.bot_tone || '',
-                                                    botInstructions: settings?.bot_instructions || '',
-                                                });
-                                                setEditingSettings(true);
-                                            }}
-                                            style={{ ...buttonStyle, background: '#3b82f6', color: '#fff' }}
-                                        >
-                                            <Edit2 size={14} /> Edit
-                                        </button>
+                                    {editingSettings ? (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                                            <div>
+                                                <label style={{ color: '#6b7280', fontSize: '14px', marginBottom: '8px', display: 'block' }}>Bot Name</label>
+                                                <input
+                                                    type="text"
+                                                    value={editSettings.botName}
+                                                    onChange={(e) => setEditSettings({ ...editSettings, botName: e.target.value })}
+                                                    style={inputStyle}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label style={{ color: '#6b7280', fontSize: '14px', marginBottom: '8px', display: 'block' }}>Bot Tone</label>
+                                                <input
+                                                    type="text"
+                                                    value={editSettings.botTone}
+                                                    onChange={(e) => setEditSettings({ ...editSettings, botTone: e.target.value })}
+                                                    style={inputStyle}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label style={{ color: '#6b7280', fontSize: '14px', marginBottom: '8px', display: 'block' }}>Bot Instructions</label>
+                                                <textarea
+                                                    value={editSettings.botInstructions}
+                                                    onChange={(e) => setEditSettings({ ...editSettings, botInstructions: e.target.value })}
+                                                    style={{ ...inputStyle, minHeight: '150px', resize: 'vertical' }}
+                                                />
+                                            </div>
+                                        </div>
                                     ) : (
-                                        <div style={{ display: 'flex', gap: '8px' }}>
-                                            <button onClick={handleSaveSettings} style={{ ...buttonStyle, background: '#22c55e', color: '#fff' }}>
-                                                <Save size={14} /> Save
-                                            </button>
-                                            <button onClick={() => setEditingSettings(false)} style={{ ...buttonStyle, background: '#64748b', color: '#fff' }}>
-                                                <X size={14} /> Cancel
-                                            </button>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                                            <div>
+                                                <span style={{ color: '#6b7280', fontSize: '14px' }}>Bot Name:</span>
+                                                <p style={{ color: '#1f2937', margin: '4px 0 0 0' }}>{settings?.bot_name || 'Not set'}</p>
+                                            </div>
+                                            <div>
+                                                <span style={{ color: '#6b7280', fontSize: '14px' }}>Bot Tone:</span>
+                                                <p style={{ color: '#1f2937', margin: '4px 0 0 0' }}>{settings?.bot_tone || 'Not set'}</p>
+                                            </div>
+                                            <div>
+                                                <span style={{ color: '#6b7280', fontSize: '14px' }}>Bot Instructions:</span>
+                                                <p style={{ color: '#1f2937', margin: '4px 0 0 0', whiteSpace: 'pre-wrap' }}>
+                                                    {settings?.bot_instructions || 'No instructions set'}
+                                                </p>
+                                            </div>
                                         </div>
                                     )}
                                 </div>
+                            )}
 
-                                {editingSettings ? (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                                        <div>
-                                            <label style={{ color: '#94a3b8', fontSize: '14px', marginBottom: '8px', display: 'block' }}>Bot Name</label>
-                                            <input
-                                                type="text"
-                                                value={editSettings.botName}
-                                                onChange={(e) => setEditSettings({ ...editSettings, botName: e.target.value })}
-                                                style={inputStyle}
-                                            />
-                                        </div>
-                                        <div>
-                                            <label style={{ color: '#94a3b8', fontSize: '14px', marginBottom: '8px', display: 'block' }}>Bot Tone</label>
-                                            <input
-                                                type="text"
-                                                value={editSettings.botTone}
-                                                onChange={(e) => setEditSettings({ ...editSettings, botTone: e.target.value })}
-                                                style={inputStyle}
-                                            />
-                                        </div>
-                                        <div>
-                                            <label style={{ color: '#94a3b8', fontSize: '14px', marginBottom: '8px', display: 'block' }}>Bot Instructions</label>
-                                            <textarea
-                                                value={editSettings.botInstructions}
-                                                onChange={(e) => setEditSettings({ ...editSettings, botInstructions: e.target.value })}
-                                                style={{ ...inputStyle, minHeight: '150px', resize: 'vertical' }}
-                                            />
-                                        </div>
+                            {/* Documents Tab */}
+                            {activeTab === 'documents' && (
+                                <div style={cardStyle}>
+                                    <h3 style={{ color: '#1f2937', margin: '0 0 20px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <FileText size={20} color="#0d9488" />
+                                        Knowledge Documents (Sandbox)
+                                    </h3>
+
+                                    {/* Add Document */}
+                                    <div style={{ marginBottom: '20px', display: 'flex', gap: '12px' }}>
+                                        <textarea
+                                            placeholder="Add new document content..."
+                                            value={newDocumentContent}
+                                            onChange={(e) => setNewDocumentContent(e.target.value)}
+                                            style={{ ...inputStyle, flex: 1, minHeight: '80px' }}
+                                        />
+                                        <button onClick={handleAddDocument} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-teal-600 text-white hover:bg-teal-700 transition-colors h-fit">
+                                            <Plus size={16} /> Add
+                                        </button>
                                     </div>
-                                ) : (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                                        <div>
-                                            <span style={{ color: '#64748b', fontSize: '14px' }}>Bot Name:</span>
-                                            <p style={{ color: '#fff', margin: '4px 0 0 0' }}>{settings?.bot_name || 'Not set'}</p>
-                                        </div>
-                                        <div>
-                                            <span style={{ color: '#64748b', fontSize: '14px' }}>Bot Tone:</span>
-                                            <p style={{ color: '#fff', margin: '4px 0 0 0' }}>{settings?.bot_tone || 'Not set'}</p>
-                                        </div>
-                                        <div>
-                                            <span style={{ color: '#64748b', fontSize: '14px' }}>Bot Instructions:</span>
-                                            <p style={{ color: '#fff', margin: '4px 0 0 0', whiteSpace: 'pre-wrap' }}>
-                                                {settings?.bot_instructions || 'No instructions set'}
+
+                                    {/* Documents List */}
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                        {documents.length === 0 ? (
+                                            <p style={{ color: '#64748b', textAlign: 'center', padding: '20px' }}>
+                                                No documents in sandbox. Sync from production or add new ones.
                                             </p>
-                                        </div>
+                                        ) : (
+                                            documents.map((doc) => (
+                                                <div
+                                                    key={doc.id}
+                                                    style={{
+                                                        background: '#f9fafb',
+                                                        borderRadius: '8px',
+                                                        padding: '16px',
+                                                        border: doc.edited_by_ai ? '1px solid #0d9488' : '1px solid #e5e7eb',
+                                                    }}
+                                                >
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                                        <p style={{ color: '#1f2937', margin: 0, flex: 1, whiteSpace: 'pre-wrap', fontSize: '14px' }}>
+                                                            {doc.content.substring(0, 300)}{doc.content.length > 300 ? '...' : ''}
+                                                        </p>
+                                                        <button
+                                                            onClick={() => handleDeleteDocument(doc.id)}
+                                                            style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#dc2626', marginLeft: '12px' }}
+                                                        >
+                                                            <Trash2 size={16} />
+                                                        </button>
+                                                    </div>
+                                                    {doc.edited_by_ai && (
+                                                        <span style={{ fontSize: '11px', color: '#0d9488', marginTop: '8px', display: 'block' }}>
+                                                            ✨ Edited by AI
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            ))
+                                        )}
                                     </div>
-                                )}
-                            </div>
-                        )}
-
-                        {/* Documents Tab */}
-                        {activeTab === 'documents' && (
-                            <div style={cardStyle}>
-                                <h3 style={{ color: '#fff', margin: '0 0 20px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <FileText size={20} />
-                                    Knowledge Documents (Sandbox)
-                                </h3>
-
-                                {/* Add Document */}
-                                <div style={{ marginBottom: '20px', display: 'flex', gap: '12px' }}>
-                                    <textarea
-                                        placeholder="Add new document content..."
-                                        value={newDocumentContent}
-                                        onChange={(e) => setNewDocumentContent(e.target.value)}
-                                        style={{ ...inputStyle, flex: 1, minHeight: '80px' }}
-                                    />
-                                    <button onClick={handleAddDocument} style={{ ...buttonStyle, background: '#22c55e', color: '#fff', height: 'fit-content' }}>
-                                        <Plus size={16} /> Add
-                                    </button>
                                 </div>
+                            )}
 
-                                {/* Documents List */}
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                    {documents.length === 0 ? (
-                                        <p style={{ color: '#64748b', textAlign: 'center', padding: '20px' }}>
-                                            No documents in sandbox. Sync from production or add new ones.
-                                        </p>
-                                    ) : (
-                                        documents.map((doc) => (
-                                            <div
-                                                key={doc.id}
-                                                style={{
-                                                    background: '#0f172a',
-                                                    borderRadius: '8px',
-                                                    padding: '16px',
-                                                    border: doc.edited_by_ai ? '1px solid #a855f7' : '1px solid #334155',
-                                                }}
-                                            >
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                                    <p style={{ color: '#fff', margin: 0, flex: 1, whiteSpace: 'pre-wrap', fontSize: '14px' }}>
-                                                        {doc.content.substring(0, 300)}{doc.content.length > 300 ? '...' : ''}
-                                                    </p>
+                            {/* Rules Tab */}
+                            {activeTab === 'rules' && (
+                                <div style={cardStyle}>
+                                    <h3 style={{ color: '#1f2937', margin: '0 0 20px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <BookOpen size={20} color="#0d9488" />
+                                        Bot Rules (Sandbox)
+                                    </h3>
+
+                                    {/* Add Rule */}
+                                    <div style={{ marginBottom: '20px', display: 'flex', gap: '12px' }}>
+                                        <input
+                                            type="text"
+                                            placeholder="Add new rule..."
+                                            value={newRuleContent}
+                                            onChange={(e) => setNewRuleContent(e.target.value)}
+                                            style={{ ...inputStyle, flex: 1 }}
+                                        />
+                                        <button onClick={handleAddRule} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-teal-600 text-white hover:bg-teal-700 transition-colors">
+                                            <Plus size={16} /> Add
+                                        </button>
+                                    </div>
+
+                                    {/* Rules List */}
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                        {rules.length === 0 ? (
+                                            <p style={{ color: '#6b7280', textAlign: 'center', padding: '20px' }}>
+                                                No rules in sandbox. Sync from production or add new ones.
+                                            </p>
+                                        ) : (
+                                            rules.map((rule) => (
+                                                <div
+                                                    key={rule.id}
+                                                    style={{
+                                                        background: '#f9fafb',
+                                                        borderRadius: '8px',
+                                                        padding: '12px 16px',
+                                                        border: rule.edited_by_ai ? '1px solid #0d9488' : '1px solid #e5e7eb',
+                                                        display: 'flex',
+                                                        justifyContent: 'space-between',
+                                                        alignItems: 'center',
+                                                    }}
+                                                >
+                                                    <div style={{ flex: 1 }}>
+                                                        <p style={{ color: '#1f2937', margin: 0, fontSize: '14px' }}>{rule.rule}</p>
+                                                        <div style={{ display: 'flex', gap: '12px', marginTop: '4px' }}>
+                                                            <span style={{ fontSize: '12px', color: '#6b7280' }}>
+                                                                Category: {rule.category}
+                                                            </span>
+                                                            <span style={{ fontSize: '12px', color: '#6b7280' }}>
+                                                                Priority: {rule.priority}
+                                                            </span>
+                                                            {rule.edited_by_ai && (
+                                                                <span style={{ fontSize: '12px', color: '#0d9488' }}>✨ AI Edited</span>
+                                                            )}
+                                                        </div>
+                                                    </div>
                                                     <button
-                                                        onClick={() => handleDeleteDocument(doc.id)}
-                                                        style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#dc2626', marginLeft: '12px' }}
+                                                        onClick={() => handleDeleteRule(rule.id)}
+                                                        style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#dc2626' }}
                                                     >
                                                         <Trash2 size={16} />
                                                     </button>
                                                 </div>
-                                                {doc.edited_by_ai && (
-                                                    <span style={{ fontSize: '11px', color: '#a855f7', marginTop: '8px', display: 'block' }}>
-                                                        ✨ Edited by AI
-                                                    </span>
-                                                )}
-                                            </div>
-                                        ))
-                                    )}
+                                            ))
+                                        )}
+                                    </div>
                                 </div>
-                            </div>
-                        )}
+                            )}
 
-                        {/* Rules Tab */}
-                        {activeTab === 'rules' && (
-                            <div style={cardStyle}>
-                                <h3 style={{ color: '#fff', margin: '0 0 20px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <BookOpen size={20} />
-                                    Bot Rules (Sandbox)
-                                </h3>
+                            {/* Goals Tab */}
+                            {activeTab === 'goals' && (
+                                <div style={cardStyle}>
+                                    <h3 style={{ color: '#fff', margin: '0 0 20px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <Target size={20} />
+                                        Bot Goals (Sandbox)
+                                    </h3>
 
-                                {/* Add Rule */}
-                                <div style={{ marginBottom: '20px', display: 'flex', gap: '12px' }}>
-                                    <input
-                                        type="text"
-                                        placeholder="Add new rule..."
-                                        value={newRuleContent}
-                                        onChange={(e) => setNewRuleContent(e.target.value)}
-                                        style={{ ...inputStyle, flex: 1 }}
-                                    />
-                                    <button onClick={handleAddRule} style={{ ...buttonStyle, background: '#22c55e', color: '#fff' }}>
-                                        <Plus size={16} /> Add
-                                    </button>
-                                </div>
+                                    {/* Add Goal */}
+                                    <div style={{ marginBottom: '20px', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                                        <input
+                                            type="text"
+                                            placeholder="Goal name..."
+                                            value={newGoalName}
+                                            onChange={(e) => setNewGoalName(e.target.value)}
+                                            style={{ ...inputStyle, flex: 1, minWidth: '200px' }}
+                                        />
+                                        <input
+                                            type="text"
+                                            placeholder="Description (optional)..."
+                                            value={newGoalDescription}
+                                            onChange={(e) => setNewGoalDescription(e.target.value)}
+                                            style={{ ...inputStyle, flex: 2, minWidth: '200px' }}
+                                        />
+                                        <button onClick={handleAddGoal} style={{ ...buttonStyle, background: '#22c55e', color: '#fff' }}>
+                                            <Plus size={16} /> Add
+                                        </button>
+                                    </div>
 
-                                {/* Rules List */}
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                    {rules.length === 0 ? (
-                                        <p style={{ color: '#64748b', textAlign: 'center', padding: '20px' }}>
-                                            No rules in sandbox. Sync from production or add new ones.
-                                        </p>
-                                    ) : (
-                                        rules.map((rule) => (
-                                            <div
-                                                key={rule.id}
-                                                style={{
-                                                    background: '#0f172a',
-                                                    borderRadius: '8px',
-                                                    padding: '12px 16px',
-                                                    border: rule.edited_by_ai ? '1px solid #a855f7' : '1px solid #334155',
-                                                    display: 'flex',
-                                                    justifyContent: 'space-between',
-                                                    alignItems: 'center',
-                                                }}
-                                            >
-                                                <div style={{ flex: 1 }}>
-                                                    <p style={{ color: '#fff', margin: 0, fontSize: '14px' }}>{rule.rule}</p>
-                                                    <div style={{ display: 'flex', gap: '12px', marginTop: '4px' }}>
-                                                        <span style={{ fontSize: '12px', color: '#64748b' }}>
-                                                            Category: {rule.category}
-                                                        </span>
-                                                        <span style={{ fontSize: '12px', color: '#64748b' }}>
-                                                            Priority: {rule.priority}
-                                                        </span>
-                                                        {rule.edited_by_ai && (
-                                                            <span style={{ fontSize: '12px', color: '#a855f7' }}>✨ AI Edited</span>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                                <button
-                                                    onClick={() => handleDeleteRule(rule.id)}
-                                                    style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#dc2626' }}
+                                    {/* Goals List */}
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                        {goals.length === 0 ? (
+                                            <p style={{ color: '#64748b', textAlign: 'center', padding: '20px' }}>
+                                                No goals in sandbox. Sync from production or add new ones.
+                                            </p>
+                                        ) : (
+                                            goals.map((goal) => (
+                                                <div
+                                                    key={goal.id}
+                                                    style={{
+                                                        background: '#0f172a',
+                                                        borderRadius: '8px',
+                                                        padding: '12px 16px',
+                                                        border: goal.is_active ? '1px solid #22c55e' : '1px solid #334155',
+                                                        display: 'flex',
+                                                        justifyContent: 'space-between',
+                                                        alignItems: 'center',
+                                                    }}
                                                 >
-                                                    <Trash2 size={16} />
-                                                </button>
-                                            </div>
-                                        ))
-                                    )}
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Goals Tab */}
-                        {activeTab === 'goals' && (
-                            <div style={cardStyle}>
-                                <h3 style={{ color: '#fff', margin: '0 0 20px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <Target size={20} />
-                                    Bot Goals (Sandbox)
-                                </h3>
-
-                                {/* Add Goal */}
-                                <div style={{ marginBottom: '20px', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-                                    <input
-                                        type="text"
-                                        placeholder="Goal name..."
-                                        value={newGoalName}
-                                        onChange={(e) => setNewGoalName(e.target.value)}
-                                        style={{ ...inputStyle, flex: 1, minWidth: '200px' }}
-                                    />
-                                    <input
-                                        type="text"
-                                        placeholder="Description (optional)..."
-                                        value={newGoalDescription}
-                                        onChange={(e) => setNewGoalDescription(e.target.value)}
-                                        style={{ ...inputStyle, flex: 2, minWidth: '200px' }}
-                                    />
-                                    <button onClick={handleAddGoal} style={{ ...buttonStyle, background: '#22c55e', color: '#fff' }}>
-                                        <Plus size={16} /> Add
-                                    </button>
-                                </div>
-
-                                {/* Goals List */}
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                    {goals.length === 0 ? (
-                                        <p style={{ color: '#64748b', textAlign: 'center', padding: '20px' }}>
-                                            No goals in sandbox. Sync from production or add new ones.
-                                        </p>
-                                    ) : (
-                                        goals.map((goal) => (
-                                            <div
-                                                key={goal.id}
-                                                style={{
-                                                    background: '#0f172a',
-                                                    borderRadius: '8px',
-                                                    padding: '12px 16px',
-                                                    border: goal.is_active ? '1px solid #22c55e' : '1px solid #334155',
-                                                    display: 'flex',
-                                                    justifyContent: 'space-between',
-                                                    alignItems: 'center',
-                                                }}
-                                            >
-                                                <div style={{ flex: 1 }}>
-                                                    <p style={{ color: '#fff', margin: 0, fontSize: '14px', fontWeight: 500 }}>
-                                                        {goal.goal_name}
-                                                    </p>
-                                                    {goal.goal_description && (
-                                                        <p style={{ color: '#94a3b8', margin: '4px 0 0 0', fontSize: '13px' }}>
-                                                            {goal.goal_description}
+                                                    <div style={{ flex: 1 }}>
+                                                        <p style={{ color: '#fff', margin: 0, fontSize: '14px', fontWeight: 500 }}>
+                                                            {goal.goal_name}
                                                         </p>
-                                                    )}
-                                                    <div style={{ display: 'flex', gap: '12px', marginTop: '4px' }}>
-                                                        <span style={{ fontSize: '12px', color: goal.is_active ? '#22c55e' : '#64748b' }}>
-                                                            {goal.is_active ? '● Active' : '○ Inactive'}
-                                                        </span>
-                                                        {goal.is_optional && (
-                                                            <span style={{ fontSize: '12px', color: '#eab308' }}>Optional</span>
+                                                        {goal.goal_description && (
+                                                            <p style={{ color: '#94a3b8', margin: '4px 0 0 0', fontSize: '13px' }}>
+                                                                {goal.goal_description}
+                                                            </p>
                                                         )}
+                                                        <div style={{ display: 'flex', gap: '12px', marginTop: '4px' }}>
+                                                            <span style={{ fontSize: '12px', color: goal.is_active ? '#22c55e' : '#64748b' }}>
+                                                                {goal.is_active ? '● Active' : '○ Inactive'}
+                                                            </span>
+                                                            {goal.is_optional && (
+                                                                <span style={{ fontSize: '12px', color: '#eab308' }}>Optional</span>
+                                                            )}
+                                                        </div>
                                                     </div>
+                                                    <button
+                                                        onClick={() => handleDeleteGoal(goal.id)}
+                                                        style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#dc2626' }}
+                                                    >
+                                                        <Trash2 size={16} />
+                                                    </button>
                                                 </div>
-                                                <button
-                                                    onClick={() => handleDeleteGoal(goal.id)}
-                                                    style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#dc2626' }}
-                                                >
-                                                    <Trash2 size={16} />
-                                                </button>
-                                            </div>
-                                        ))
-                                    )}
+                                            ))
+                                        )}
+                                    </div>
                                 </div>
-                            </div>
-                        )}
-                    </>
-                )}
+                            )}
+                        </>
+                    )}
 
-                {/* Info Banner */}
-                <div style={{
-                    background: 'linear-gradient(135deg, #1e3a5f 0%, #1e293b 100%)',
-                    borderRadius: '12px',
-                    padding: '20px',
-                    border: '1px solid #334155',
-                    marginTop: '24px',
-                }}>
-                    <h4 style={{ color: '#fff', margin: '0 0 12px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <AlertTriangle size={18} color="#eab308" />
-                        About ML Sandbox
-                    </h4>
-                    <ul style={{ color: '#94a3b8', margin: 0, paddingLeft: '20px', lineHeight: '1.8' }}>
-                        <li>This is an <strong>isolated environment</strong> for AI learning experimentation</li>
-                        <li>Changes here do <strong>NOT affect your live Facebook bot</strong></li>
-                        <li>AI will edit sandbox data instead of production when experimenting</li>
-                        <li>Use "Sync from Production" to pull your latest live settings</li>
-                        <li>Review AI changes here before applying them to production</li>
-                    </ul>
-                </div>
-            </main>
+                    {/* Info Banner */}
+                    <div style={{
+                        background: 'linear-gradient(135deg, #1e3a5f 0%, #1e293b 100%)',
+                        borderRadius: '12px',
+                        padding: '20px',
+                        border: '1px solid #334155',
+                        marginTop: '24px',
+                    }}>
+                        <h4 style={{ color: '#fff', margin: '0 0 12px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <AlertTriangle size={18} color="#eab308" />
+                            About ML Sandbox
+                        </h4>
+                        <ul style={{ color: '#94a3b8', margin: 0, paddingLeft: '20px', lineHeight: '1.8' }}>
+                            <li>This is an <strong>isolated environment</strong> for AI learning experimentation</li>
+                            <li>Changes here do <strong>NOT affect your live Facebook bot</strong></li>
+                            <li>AI will edit sandbox data instead of production when experimenting</li>
+                            <li>Use "Sync from Production" to pull your latest live settings</li>
+                            <li>Review AI changes here before applying them to production</li>
+                        </ul>
+                    </div>
+                </main>
+            </div>
         </div>
     );
 }

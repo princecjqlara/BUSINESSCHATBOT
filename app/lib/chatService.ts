@@ -106,6 +106,12 @@ interface LeadContext {
     pipelineStageDescription: string | null;
     lastBotMessages: string[];
     messageCount: number;
+    bestContactTimes: {
+        bestContactTimes: { dayOfWeek: string; timeRange: string; startHour: number; endHour: number; confidence: number }[];
+        computedAt: string | null;
+        isDefault?: boolean;
+    } | null;
+    lastMessageAt: string | null;
 }
 
 // Fetch lead context for autonomous AI follow-up
@@ -135,6 +141,13 @@ async function getLeadContext(senderId: string): Promise<LeadContext | null> {
             return null;
         }
 
+        // Also fetch best contact times and last_message_at
+        const { data: leadExtra } = await supabase
+            .from('leads')
+            .select('best_contact_times, last_message_at')
+            .eq('sender_id', senderId)
+            .single();
+
         // Fetch last 5 bot messages to avoid repetition
         const { data: botMessages } = await supabase
             .from('conversations')
@@ -158,6 +171,8 @@ async function getLeadContext(senderId: string): Promise<LeadContext | null> {
             pipelineStageDescription: pipelineStage?.description || null,
             lastBotMessages,
             messageCount: lead.message_count || 0,
+            bestContactTimes: (leadExtra?.best_contact_times as LeadContext['bestContactTimes']) || null,
+            lastMessageAt: leadExtra?.last_message_at || null,
         };
 
         console.log(`[Lead Context] Loaded for ${senderId}: Stage="${context.pipelineStageName}", Messages=${context.messageCount}`);
@@ -719,7 +734,14 @@ ${leadContextSection}
 - Recommend next steps based on where the conversation is heading
 - Take initiative to keep the conversation productive and moving forward
 
-IMPORTANT: Be natural and conversational. Don't explicitly mention that you're "thinking" or "analyzing" - just act on your insights naturally.
+⏰ BEST TIME TO CONTACT INTELLIGENCE:
+${leadContext?.bestContactTimes ? `- This customer's optimal contact times have been analyzed
+- Best windows: ${leadContext.bestContactTimes.bestContactTimes?.slice(0, 3).map(t => `${t.dayOfWeek} ${t.timeRange}`).join(', ') || 'Not yet computed'}
+- ${leadContext.bestContactTimes.isDefault ? 'Using default times (not enough data yet)' : 'Based on their actual response patterns'}
+- Consider mentioning follow-up timing naturally if relevant` : '- No contact time data available yet'}
+${leadContext?.lastMessageAt ? `- Last message: ${new Date(leadContext.lastMessageAt).toLocaleString('en-PH', { timeZone: 'Asia/Manila' })}` : ''}
+
+IMPORTANT: Be natural and conversational. Don't explicitly mention that you're "thinking" or "analyzing" - just act on your insights naturally. If suggesting follow-up times, be casual about it (e.g., "I'll check back tomorrow morning!" instead of "Based on your optimal contact times...").
 
 `;
     }
