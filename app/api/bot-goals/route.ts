@@ -46,7 +46,13 @@ export async function POST(req: Request) {
 
         if (error) {
             console.error('Error creating bot goal:', error);
-            return NextResponse.json({ error: 'Failed to create bot goal', details: error.message }, { status: 500 });
+            // Return detailed error for debugging
+            return NextResponse.json({
+                error: 'Failed to create bot goal',
+                details: error.message,
+                code: error.code,
+                hint: error.hint || 'Check if all columns exist in bot_goals table (stop_on_completion, is_optional)'
+            }, { status: 500 });
         }
 
         return NextResponse.json({ goal: data, success: true });
