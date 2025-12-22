@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, Suspense } from 'react';
-import { ArrowLeft, Facebook, Trash2, CheckCircle, AlertCircle, Loader2, RefreshCw, Target, Plus, Edit2, GripVertical, X, ToggleLeft, ToggleRight, StopCircle } from 'lucide-react';
+import { ArrowLeft, Facebook, Trash2, CheckCircle, AlertCircle, Loader2, RefreshCw, Target, Plus, Edit2, GripVertical, X, ToggleLeft, ToggleRight, StopCircle, Clock, Zap, Play } from 'lucide-react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import PageSelector from '@/app/components/PageSelector';
@@ -57,6 +57,12 @@ function SettingsContent() {
     const [showGoalModal, setShowGoalModal] = useState(false);
     const [editingGoal, setEditingGoal] = useState<BotGoal | null>(null);
     const [goalForm, setGoalForm] = useState<{ goalName: string; goalDescription: string; priorityOrder: number | null; isActive: boolean; isOptional: boolean; stopOnCompletion: boolean }>({ goalName: '', goalDescription: '', priorityOrder: null, isActive: true, isOptional: false, stopOnCompletion: false });
+
+    // Follow-up actions state
+    const [runningAiFollowup, setRunningAiFollowup] = useState(false);
+    const [runningScheduledMessages, setRunningScheduledMessages] = useState(false);
+    const [runningWorkflows, setRunningWorkflows] = useState(false);
+    const [followupResult, setFollowupResult] = useState<{ type: string; data: Record<string, unknown> } | null>(null);
 
     // Handle OAuth callback results
     useEffect(() => {
@@ -372,6 +378,84 @@ function SettingsContent() {
         reordered.splice(newIndex, 0, moved);
         setBotGoals(reordered);
         await persistPriorities(reordered);
+    };
+
+    // Follow-up action handlers
+    const handleRunAiFollowup = async () => {
+        setRunningAiFollowup(true);
+        setFollowupResult(null);
+        setMessage('Running AI Autonomous Follow-up...');
+
+        try {
+            const res = await fetch('/api/cron/ai-autonomous-followups', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ forceRun: true })
+            });
+
+            const data = await res.json();
+            if (res.ok) {
+                setFollowupResult({ type: 'ai-followup', data });
+                setMessage(`AI Follow-up complete: ${data.leadsChecked} leads checked, ${data.followupsScheduled} scheduled, ${data.followupsSent} sent`);
+            } else {
+                setMessage(`Error: ${data.error || 'Failed to run AI follow-up'}`);
+            }
+        } catch (error) {
+            setMessage('Error running AI follow-up');
+        } finally {
+            setRunningAiFollowup(false);
+            setTimeout(() => setMessage(''), 5000);
+        }
+    };
+
+    const handleProcessScheduledMessages = async () => {
+        setRunningScheduledMessages(true);
+        setFollowupResult(null);
+        setMessage('Processing scheduled messages...');
+
+        try {
+            const res = await fetch('/api/cron/process-scheduled-messages', {
+                method: 'POST',
+            });
+
+            const data = await res.json();
+            if (res.ok) {
+                setFollowupResult({ type: 'scheduled-messages', data });
+                setMessage(data.message || 'Scheduled messages processed successfully');
+            } else {
+                setMessage(`Error: ${data.error || 'Failed to process scheduled messages'}`);
+            }
+        } catch (error) {
+            setMessage('Error processing scheduled messages');
+        } finally {
+            setRunningScheduledMessages(false);
+            setTimeout(() => setMessage(''), 5000);
+        }
+    };
+
+    const handleExecuteWorkflows = async () => {
+        setRunningWorkflows(true);
+        setFollowupResult(null);
+        setMessage('Executing scheduled workflows...');
+
+        try {
+            const res = await fetch('/api/cron/execute-workflows', {
+                method: 'POST',
+            });
+
+            const data = await res.json();
+            if (res.ok) {
+                setFollowupResult({ type: 'workflows', data });
+                setMessage(`Workflows executed: ${data.processed} processed`);
+            } else {
+                setMessage(`Error: ${data.error || 'Failed to execute workflows'}`);
+            }
+        } catch (error) {
+            setMessage('Error executing workflows');
+        } finally {
+            setRunningWorkflows(false);
+            setTimeout(() => setMessage(''), 5000);
+        }
     };
 
     return (
@@ -701,6 +785,132 @@ function SettingsContent() {
                                 ))}
                             </div>
                         )}
+                    </div>
+                </div>
+
+                {/* Follow-up Actions Section */}
+                <div className="space-y-6">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                        <div className="flex items-start gap-5">
+                            <div className="p-4 bg-green-50 text-green-600 rounded-2xl">
+                                <Zap size={32} />
+                            </div>
+                            <div>
+                                <h2 className="text-2xl font-normal text-gray-900">Follow-up Actions</h2>
+                                <p className="text-gray-500 mt-1 text-base font-light">
+                                    Manually trigger follow-up processes (normally run by cron jobs)
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-3">
+                        {/* AI Autonomous Follow-up */}
+                        <div className="p-6 bg-white border border-gray-100 rounded-[24px] hover:shadow-lg transition-all">
+                            <div className="flex items-center gap-3 mb-4">
+                                <div className="p-2 bg-teal-50 text-teal-600 rounded-xl">
+                                    <Zap size={20} />
+                                </div>
+                                <h3 className="font-semibold text-gray-900">AI Follow-up</h3>
+                            </div>
+                            <p className="text-sm text-gray-500 mb-4">
+                                Check leads for stale conversations and generate AI follow-up messages
+                            </p>
+                            <button
+                                onClick={handleRunAiFollowup}
+                                disabled={runningAiFollowup}
+                                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-teal-600 text-white rounded-full hover:bg-black transition-all font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {runningAiFollowup ? (
+                                    <>
+                                        <Loader2 size={16} className="animate-spin" />
+                                        Running...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Play size={16} />
+                                        Run AI Follow-up
+                                    </>
+                                )}
+                            </button>
+                            {followupResult?.type === 'ai-followup' && (
+                                <div className="mt-3 p-3 bg-gray-50 rounded-lg text-xs">
+                                    <p><strong>Leads checked:</strong> {(followupResult.data as { leadsChecked?: number }).leadsChecked || 0}</p>
+                                    <p><strong>Scheduled:</strong> {(followupResult.data as { followupsScheduled?: number }).followupsScheduled || 0}</p>
+                                    <p><strong>Sent:</strong> {(followupResult.data as { followupsSent?: number }).followupsSent || 0}</p>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Process Scheduled Messages */}
+                        <div className="p-6 bg-white border border-gray-100 rounded-[24px] hover:shadow-lg transition-all">
+                            <div className="flex items-center gap-3 mb-4">
+                                <div className="p-2 bg-blue-50 text-blue-600 rounded-xl">
+                                    <Clock size={20} />
+                                </div>
+                                <h3 className="font-semibold text-gray-900">Best Time Messages</h3>
+                            </div>
+                            <p className="text-sm text-gray-500 mb-4">
+                                Send messages that were scheduled for optimal contact times
+                            </p>
+                            <button
+                                onClick={handleProcessScheduledMessages}
+                                disabled={runningScheduledMessages}
+                                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-full hover:bg-black transition-all font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {runningScheduledMessages ? (
+                                    <>
+                                        <Loader2 size={16} className="animate-spin" />
+                                        Processing...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Play size={16} />
+                                        Process Messages
+                                    </>
+                                )}
+                            </button>
+                            {followupResult?.type === 'scheduled-messages' && (
+                                <div className="mt-3 p-3 bg-gray-50 rounded-lg text-xs">
+                                    <p><strong>Status:</strong> {(followupResult.data as { success?: boolean }).success ? '✅ Success' : '❌ Failed'}</p>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Execute Workflows */}
+                        <div className="p-6 bg-white border border-gray-100 rounded-[24px] hover:shadow-lg transition-all">
+                            <div className="flex items-center gap-3 mb-4">
+                                <div className="p-2 bg-purple-50 text-purple-600 rounded-xl">
+                                    <RefreshCw size={20} />
+                                </div>
+                                <h3 className="font-semibold text-gray-900">Workflow Follow-ups</h3>
+                            </div>
+                            <p className="text-sm text-gray-500 mb-4">
+                                Execute workflow steps that are scheduled and waiting
+                            </p>
+                            <button
+                                onClick={handleExecuteWorkflows}
+                                disabled={runningWorkflows}
+                                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-purple-600 text-white rounded-full hover:bg-black transition-all font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {runningWorkflows ? (
+                                    <>
+                                        <Loader2 size={16} className="animate-spin" />
+                                        Executing...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Play size={16} />
+                                        Execute Workflows
+                                    </>
+                                )}
+                            </button>
+                            {followupResult?.type === 'workflows' && (
+                                <div className="mt-3 p-3 bg-gray-50 rounded-lg text-xs">
+                                    <p><strong>Processed:</strong> {(followupResult.data as { processed?: number }).processed || 0} workflows</p>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
 

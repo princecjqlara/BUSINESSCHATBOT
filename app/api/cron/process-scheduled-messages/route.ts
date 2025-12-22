@@ -25,16 +25,42 @@ export async function GET(req: Request) {
 
         await processScheduledMessages();
 
-        return NextResponse.json({ 
-            success: true, 
+        return NextResponse.json({
+            success: true,
             message: 'Scheduled messages processed',
             timestamp: new Date().toISOString()
         });
     } catch (error) {
         console.error('[Cron] Error processing scheduled messages:', error);
         return NextResponse.json(
-            { 
-                success: false, 
+            {
+                success: false,
+                error: error instanceof Error ? error.message : 'Unknown error',
+                timestamp: new Date().toISOString()
+            },
+            { status: 500 }
+        );
+    }
+}
+
+// POST endpoint for manual triggering (e.g., from admin UI)
+export async function POST() {
+    try {
+        console.log('[Scheduled Messages] Manual trigger received');
+
+        await processScheduledMessages();
+
+        return NextResponse.json({
+            success: true,
+            message: 'Scheduled messages processed',
+            triggeredManually: true,
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('[Cron] Error processing scheduled messages:', error);
+        return NextResponse.json(
+            {
+                success: false,
                 error: error instanceof Error ? error.message : 'Unknown error',
                 timestamp: new Date().toISOString()
             },

@@ -79,3 +79,73 @@ export async function GET(req: Request) {
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
 }
+
+// POST endpoint for manual triggering (e.g., from admin UI)
+export async function POST() {
+    try {
+        console.log('[Workflow Cron] Manual trigger received');
+
+        // Get all pending executions that are scheduled for now or earlier
+        const { data: executions, error } = await supabase
+            .from('workflow_executions')
+            .select(`
+        *,
+        workflows:workflows(workflow_data)
+      `)
+            .eq('status', 'pending')
+            .not('scheduled_for', 'is', null)
+            .lte('scheduled_for', new Date().toISOString())
+            .limit(10);
+
+        if (error) throw error;
+
+        if (!executions || executions.length === 0) {
+            console.log('No scheduled executions found');
+            return NextResponse.json({ processed: 0 });
+        }
+
+        console.log(`Found ${executions.length} scheduled executions`);
+
+        // Process each execution
+        for (const execution of executions) {
+            try {
+                // Get lead sender_id
+                const { data: lead } = await supabase
+                    .from('leads')
+                    .select('sender_id')
+                    .eq('id', execution.lead_id)
+                    .single();
+
+                if (!lead) {
+                    console.error('Lead not found for execution:', execution.id);
+                    continue;
+                }
+
+                // Clear scheduled_for and continue execution
+                await supabase
+                    .from('workflow_executions')
+                    .update({ scheduled_for: null })
+                    .eq('id', execution.id);
+
+                const workflowData = (execution.workflows as any).workflow_data;
+                await continueExecution(execution.id, workflowData, {
+                    leadId: execution.lead_id,
+                    senderId: lead.sender_id,
+                });
+
+                console.log('Processed execution:', execution.id);
+            } catch (execError) {
+                console.error('Error processing execution:', execution.id, execError);
+            }
+        }
+
+        return NextResponse.json({
+            processed: executions.length,
+            triggeredManually: true,
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('Cron execution error:', error);
+        return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    }
+}
