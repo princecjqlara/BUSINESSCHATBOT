@@ -38,7 +38,8 @@ export async function executeWorkflow(
     workflowId: string,
     leadId: string,
     senderId: string,
-    skipPublishCheck: boolean = false
+    skipPublishCheck: boolean = false,
+    skipWait: boolean = false
 ): Promise<void> {
     console.log(`Starting workflow ${workflowId} for lead ${leadId}`);
 
@@ -105,16 +106,17 @@ export async function executeWorkflow(
     console.log('Execution record created:', execution.id);
 
     // Start executing from trigger (pass workflowId for scheduled messages)
-    await continueExecution(execution.id, workflowData, { leadId, senderId }, workflowId);
+    await continueExecution(execution.id, workflowData, { leadId, senderId }, workflowId, skipWait);
 }
 
 export async function continueExecution(
     executionId: string,
     workflowData: WorkflowData,
     context: ExecutionContext,
-    workflowId?: string
+    workflowId?: string,
+    skipWait: boolean = false
 ): Promise<void> {
-    console.log('continueExecution called for:', executionId);
+    console.log('continueExecution called for:', executionId, skipWait ? '(skipWait mode)' : '');
 
     const { data: execution, error: execError } = await supabase
         .from('workflow_executions')
@@ -152,7 +154,7 @@ export async function continueExecution(
     const currentWorkflowId = execution.workflow_id;
 
     // Execute the node
-    const nextNodeId = await executeNode(currentNode, workflowData, context, executionId, currentWorkflowId);
+    const nextNodeId = await executeNode(currentNode, workflowData, context, executionId, currentWorkflowId, skipWait);
     console.log('Next node ID:', nextNodeId);
 
     if (nextNodeId === 'WAIT') {
@@ -185,8 +187,8 @@ export async function continueExecution(
         .update({ current_node_id: nextNodeId })
         .eq('id', executionId);
 
-    // Continue execution (pass workflowId)
-    await continueExecution(executionId, workflowData, context, execution.workflow_id);
+    // Continue execution (pass workflowId and skipWait)
+    await continueExecution(executionId, workflowData, context, execution.workflow_id, skipWait);
 }
 
 async function executeNode(
@@ -194,7 +196,8 @@ async function executeNode(
     workflowData: WorkflowData,
     context: ExecutionContext,
     executionId: string,
-    workflowId?: string
+    workflowId?: string,
+    skipWait: boolean = false
 ): Promise<string | null | 'WAIT' | 'STOP'> {
     switch (node.data.type) {
         case 'trigger':
@@ -266,6 +269,12 @@ Respond with ONLY the message text to send, nothing else. Keep it natural and co
             return getNextNode(node.id, workflowData);
 
         case 'wait':
+            // In test mode (skipWait), skip the wait and continue immediately
+            if (skipWait) {
+                console.log(`[Workflow] Skipping wait node in test mode (would have waited ${node.data.duration} ${node.data.unit || 'minutes'})`);
+                return getNextNode(node.id, workflowData);
+            }
+
             // Schedule execution for later
             const duration = parseInt(node.data.duration || '5');
             const unit = node.data.unit || 'minutes';

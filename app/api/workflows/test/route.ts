@@ -13,13 +13,14 @@ export async function POST(req: Request) {
 
         console.log(`[TEST] Starting workflow execution: ${workflowId} for lead ${leadId}`);
         console.log(`[TEST] Sender ID: ${senderId}`);
+        console.log(`[TEST] Running in TEST MODE - wait nodes will be skipped`);
 
-        // Execute the workflow (skip publish check for testing)
-        await executeWorkflow(workflowId, leadId, senderId, true);
+        // Execute the workflow (skip publish check and wait nodes for testing)
+        await executeWorkflow(workflowId, leadId, senderId, true, true);
 
         return NextResponse.json({
             success: true,
-            message: 'Workflow execution started. Check console logs for details.'
+            message: 'Workflow test completed. Wait nodes were skipped for immediate execution.'
         });
     } catch (error) {
         console.error('Error testing workflow:', error);
