@@ -555,14 +555,20 @@ ${maxSentencesPerMessage > 0
     // Add clear guidance for name handling to avoid bracketed placeholders
     if (customerFirstName) {
         systemPrompt += `CUSTOMER NAME:
-- Their name is "${customerFirstName}". Use it naturally in greetings (e.g., "Hi ${customerFirstName}!").
-- NEVER use placeholders like [Name] or {{name}} - always write the real name without brackets.
+- The customer's name is "${customerFirstName}"
+- ALWAYS use "${customerFirstName}" when addressing them (e.g., "Hi ${customerFirstName}!" or "Salamat ${customerFirstName}!")
+- NEVER write the literal words "first name" or "name" as a placeholder
+- NEVER use [Name] or {{name}} or {{first_name}} placeholders
+- Use the ACTUAL name value: ${customerFirstName}
 
 `;
     } else {
         systemPrompt += `NAME HANDLING:
-- We don't have their name yet. Do NOT use placeholders like [Name] or {{name}}.
-- Use a warm generic greeting until the customer shares their name.
+- We don't know their name yet
+- Do NOT use any name at all - no placeholders, no "first name", nothing
+- NEVER write the literal words "first name" or "name" as a substitute
+- Use warm generic greetings like "Hi po!" or "Hello!"
+- Wait for them to share their name naturally
 
 `;
     }
