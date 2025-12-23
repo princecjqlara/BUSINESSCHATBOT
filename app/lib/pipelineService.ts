@@ -178,6 +178,88 @@ export async function getOrCreateLead(senderId: string, pageAccessToken?: string
 
 }
 
+/**
+ * Extract customer name from conversation history using AI
+ * Call this after some messages have been exchanged
+ */
+export async function extractAndUpdateLeadName(leadId: string, senderId: string): Promise<string | null> {
+    try {
+        // Check if lead already has a name
+        const { data: lead } = await supabase
+            .from('leads')
+            .select('name')
+            .eq('id', leadId)
+            .single();
+
+        if (lead?.name) {
+            return lead.name; // Already has a name
+        }
+
+        // Get recent conversation history
+        const { data: messages } = await supabase
+            .from('conversations')
+            .select('role, content')
+            .eq('sender_id', senderId)
+            .order('created_at', { ascending: true })
+            .limit(15);
+
+        if (!messages || messages.length < 2) {
+            return null; // Not enough conversation history
+        }
+
+        // Build conversation text
+        const conversationText = messages
+            .map((m: { role: string; content: string }) => `${m.role === 'user' ? 'Customer' : 'Bot'}: ${m.content}`)
+            .join('\n');
+
+        // Use AI to extract name
+        const prompt = `Analyze this conversation and extract the customer's REAL NAME (if mentioned).
+
+CONVERSATION:
+${conversationText}
+
+Look for:
+- The customer introducing themselves ("I'm John", "My name is Maria", "This is Juan")
+- The bot greeting them by name
+- Any mention of their name in context
+
+Respond with ONLY a JSON object:
+{"name": "Customer's Real Name" or null if not found}
+
+DO NOT guess or make up names. Only return a name if it was explicitly mentioned.`;
+
+        const completion = await client.chat.completions.create({
+            model: "deepseek-ai/deepseek-v3.1",
+            messages: [{ role: 'user', content: prompt }],
+            temperature: 0.1,
+            max_tokens: 100,
+        });
+
+        const responseText = completion.choices[0]?.message?.content || '';
+
+        // Parse response
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+            const result = JSON.parse(jsonMatch[0]);
+            if (result.name && typeof result.name === 'string' && result.name.length > 1) {
+                // Update lead with extracted name
+                await supabase
+                    .from('leads')
+                    .update({ name: result.name })
+                    .eq('id', leadId);
+
+                console.log(`Extracted name "${result.name}" for lead ${leadId}`);
+                return result.name;
+            }
+        }
+
+        return null;
+    } catch (error) {
+        console.error('Error extracting name:', error);
+        return null;
+    }
+}
+
 
 // Increment message count for a lead
 export async function incrementMessageCount(leadId: string): Promise<number> {

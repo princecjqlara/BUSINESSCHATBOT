@@ -2,7 +2,7 @@ import { getBotResponse, ImageContext } from '@/app/lib/chatService';
 import { extractAndStoreContactInfo } from '@/app/lib/contactExtractionService';
 import { isTakeoverActive } from '@/app/lib/humanTakeoverService';
 import { analyzeImageForReceipt, isConfirmedReceipt } from '@/app/lib/receiptDetectionService';
-import { analyzeAndUpdateStage, getOrCreateLead, incrementMessageCount, moveLeadToReceiptStage, shouldAnalyzeStage } from '@/app/lib/pipelineService';
+import { analyzeAndUpdateStage, getOrCreateLead, incrementMessageCount, moveLeadToReceiptStage, shouldAnalyzeStage, extractAndUpdateLeadName } from '@/app/lib/pipelineService';
 import { computeBestContactTimes, storeBestContactTimes } from '@/app/lib/bestContactTimesService';
 import { stripMediaLinksFromText } from '@/app/lib/mediaUtils';
 import { supabase } from '@/app/lib/supabase';
@@ -264,6 +264,13 @@ export async function handleMessage(sender_psid: string, received_message: strin
         if (lead) {
             const messageCount = await incrementMessageCount(lead.id);
             console.log(`Lead ${lead.id} message count: ${messageCount}`);
+
+            // Try to extract name from conversation after a few messages
+            if (messageCount >= 3 && messageCount <= 8) {
+                extractAndUpdateLeadName(lead.id, sender_psid).catch((err: unknown) => {
+                    console.error('Error extracting name from conversation:', err);
+                });
+            }
 
             // Get conversation history for better contact extraction
             let conversationHistory: Array<{ role: string; content: string }> = [];
