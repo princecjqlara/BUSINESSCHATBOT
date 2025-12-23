@@ -914,6 +914,76 @@ function SettingsContent() {
                     </div>
                 </div>
 
+                {/* Danger Zone - Reset Data */}
+                <div className="bg-red-50 rounded-2xl shadow-sm p-8 border border-red-200">
+                    <h2 className="text-2xl font-semibold mb-4 text-red-800">⚠️ Danger Zone</h2>
+                    <p className="text-red-700 mb-4">
+                        Reset all leads, conversations, and page connections. This action cannot be undone.
+                        Bot knowledge, settings, and goals will be preserved.
+                    </p>
+                    <div className="bg-white rounded-lg p-4 mb-4 border border-red-200">
+                        <p className="text-sm text-gray-600 mb-2"><strong>Will DELETE:</strong></p>
+                        <ul className="text-sm text-red-600 list-disc list-inside">
+                            <li>All connected Facebook pages</li>
+                            <li>All leads/contacts</li>
+                            <li>All conversation history</li>
+                            <li>All AI follow-up records</li>
+                            <li>All scheduled messages</li>
+                            <li>All workflow executions</li>
+                        </ul>
+                        <p className="text-sm text-gray-600 mt-3 mb-2"><strong>Will KEEP:</strong></p>
+                        <ul className="text-sm text-green-600 list-disc list-inside">
+                            <li>Bot settings & configuration</li>
+                            <li>Bot goals</li>
+                            <li>Bot rules</li>
+                            <li>Knowledge base (documents)</li>
+                            <li>Pipeline stages</li>
+                            <li>Workflow definitions</li>
+                        </ul>
+                    </div>
+                    <button
+                        onClick={async () => {
+                            const confirmed = window.confirm(
+                                '⚠️ Are you sure you want to reset ALL data?\n\n' +
+                                'This will delete:\n' +
+                                '• All leads/contacts\n' +
+                                '• All conversations\n' +
+                                '• All connected pages\n\n' +
+                                'This action CANNOT be undone!'
+                            );
+                            if (confirmed) {
+                                const doubleConfirm = window.prompt(
+                                    'Type "RESET" to confirm data deletion:'
+                                );
+                                if (doubleConfirm === 'RESET') {
+                                    setMessage('Resetting data...');
+                                    try {
+                                        const res = await fetch('/api/reset-data', {
+                                            method: 'POST',
+                                            headers: { 'Content-Type': 'application/json' },
+                                            body: JSON.stringify({ confirmReset: 'RESET_ALL_DATA' }),
+                                        });
+                                        const data = await res.json();
+                                        if (data.success) {
+                                            setMessage('✅ All data has been reset successfully!');
+                                            fetchConnectedPages();
+                                        } else {
+                                            setMessage('❌ Reset failed: ' + (data.error || 'Unknown error'));
+                                        }
+                                    } catch (error) {
+                                        setMessage('❌ Reset failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
+                                    }
+                                } else if (doubleConfirm !== null) {
+                                    setMessage('Reset cancelled - you must type "RESET" exactly.');
+                                }
+                            }
+                        }}
+                        className="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium"
+                    >
+                        🗑️ Reset All Data
+                    </button>
+                </div>
+
                 {/* Goal Modal */}
                 {showGoalModal && (
                     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
