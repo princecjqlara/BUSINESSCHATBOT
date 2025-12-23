@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, Clock, User, Phone, Mail, MessageSquare, TrendingUp, Brain, Calendar, Award, BarChart3, Building2, Link2, Briefcase, UserCircle, Globe, Target, CheckCircle2 } from 'lucide-react';
+import { X, Clock, User, Phone, Mail, MessageSquare, TrendingUp, Brain, Calendar, Award, BarChart3, Building2, Link2, Briefcase, UserCircle, Globe, Target, CheckCircle2, Zap, Send } from 'lucide-react';
 import { BestContactTimesData, BestContactTimeWindow } from '@/app/lib/bestContactTimesService';
 
 interface LeadDetails {
@@ -79,6 +79,17 @@ interface LeadDetails {
         priorityOrder: number;
         completedAt: string;
         completionContext: string | null;
+    }>;
+    aiFollowups: Array<{
+        id: string;
+        status: string;
+        followupType: string;
+        message: string;
+        aiReasoning: string | null;
+        urgency: string | null;
+        scheduledFor: string | null;
+        sentAt: string | null;
+        createdAt: string;
     }>;
 }
 
@@ -587,6 +598,83 @@ export default function LeadDetailsModal({ leadId, isOpen, onClose }: LeadDetail
                                                             )}
                                                             <div className="mt-2 text-xs text-gray-400">
                                                                 Completed {formatTimeAgo(completion.completedAt)}
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* AI Autonomous Follow-ups */}
+                                        {details.aiFollowups && details.aiFollowups.length > 0 && (
+                                            <div className="bg-orange-50 rounded-xl p-6">
+                                                <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                                                    <Zap size={20} className="text-orange-600" />
+                                                    AI Follow-up Decisions
+                                                </h3>
+                                                <div className="space-y-3">
+                                                    {details.aiFollowups.map((followup) => (
+                                                        <div
+                                                            key={followup.id}
+                                                            className={`bg-white rounded-lg p-4 border ${followup.status === 'sent' ? 'border-green-200' :
+                                                                    followup.status === 'scheduled' ? 'border-orange-200' :
+                                                                        followup.status === 'pending' ? 'border-blue-200' :
+                                                                            'border-gray-200'
+                                                                }`}
+                                                        >
+                                                            <div className="flex items-start justify-between mb-2">
+                                                                <div className="flex items-center gap-2">
+                                                                    {followup.status === 'sent' ? (
+                                                                        <Send size={16} className="text-green-600" />
+                                                                    ) : followup.status === 'scheduled' ? (
+                                                                        <Clock size={16} className="text-orange-600" />
+                                                                    ) : (
+                                                                        <Zap size={16} className="text-blue-600" />
+                                                                    )}
+                                                                    <span className={`px-2 py-1 text-xs rounded-md font-medium ${followup.status === 'sent' ? 'bg-green-100 text-green-700' :
+                                                                            followup.status === 'scheduled' ? 'bg-orange-100 text-orange-700' :
+                                                                                followup.status === 'pending' ? 'bg-blue-100 text-blue-700' :
+                                                                                    followup.status === 'failed' ? 'bg-red-100 text-red-700' :
+                                                                                        'bg-gray-100 text-gray-700'
+                                                                        }`}>
+                                                                        {followup.status.toUpperCase()}
+                                                                    </span>
+                                                                    <span className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-md">
+                                                                        {followup.followupType?.replace('_', ' ')}
+                                                                    </span>
+                                                                    {followup.urgency && (
+                                                                        <span className={`px-2 py-1 text-xs rounded-md ${followup.urgency === 'high' ? 'bg-red-100 text-red-700' :
+                                                                                followup.urgency === 'medium' ? 'bg-yellow-100 text-yellow-700' :
+                                                                                    'bg-gray-100 text-gray-600'
+                                                                            }`}>
+                                                                            {followup.urgency}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+
+                                                            {followup.aiReasoning && (
+                                                                <div className="mt-2 text-sm text-gray-700 bg-orange-50 rounded p-2 border border-orange-100">
+                                                                    <span className="font-medium text-orange-700">🤖 AI Reasoning:</span> {followup.aiReasoning}
+                                                                </div>
+                                                            )}
+
+                                                            <div className="mt-2 text-sm text-gray-600 italic">
+                                                                &quot;{followup.message.substring(0, 150)}{followup.message.length > 150 ? '...' : ''}&quot;
+                                                            </div>
+
+                                                            <div className="mt-2 flex items-center gap-4 text-xs text-gray-400">
+                                                                {followup.scheduledFor && followup.status === 'scheduled' && (
+                                                                    <span className="text-orange-600">
+                                                                        ⏰ Scheduled: {new Date(followup.scheduledFor).toLocaleString()}
+                                                                    </span>
+                                                                )}
+                                                                {followup.sentAt && (
+                                                                    <span className="text-green-600">
+                                                                        ✓ Sent: {formatTimeAgo(followup.sentAt)}
+                                                                    </span>
+                                                                )}
+                                                                <span>Created {formatTimeAgo(followup.createdAt)}</span>
                                                             </div>
                                                         </div>
                                                     ))}

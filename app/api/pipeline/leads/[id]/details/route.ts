@@ -227,6 +227,43 @@ export async function GET(
             console.error('Error fetching goal completions:', error);
         }
 
+        // Fetch AI autonomous follow-ups
+        let aiFollowups: Array<{
+            id: string;
+            status: string;
+            followupType: string;
+            message: string;
+            aiReasoning: string | null;
+            urgency: string | null;
+            scheduledFor: string | null;
+            sentAt: string | null;
+            createdAt: string;
+        }> = [];
+        try {
+            const { data: followups, error: followupsError } = await supabase
+                .from('ai_followups')
+                .select('*')
+                .eq('lead_id', id)
+                .order('created_at', { ascending: false })
+                .limit(10);
+
+            if (!followupsError && followups) {
+                aiFollowups = followups.map((followup: any) => ({
+                    id: followup.id,
+                    status: followup.status,
+                    followupType: followup.followup_type,
+                    message: followup.message,
+                    aiReasoning: followup.ai_reasoning,
+                    urgency: followup.urgency,
+                    scheduledFor: followup.scheduled_for,
+                    sentAt: followup.sent_at,
+                    createdAt: followup.created_at,
+                }));
+            }
+        } catch (error) {
+            console.error('Error fetching AI follow-ups:', error);
+        }
+
         return NextResponse.json({
             lead: {
                 id: lead.id,
@@ -256,6 +293,7 @@ export async function GET(
             mlStrategyPerformance,
             mlContextFeatures,
             goalCompletions,
+            aiFollowups,
         });
     } catch (error) {
         console.error('Error fetching lead details:', error);
