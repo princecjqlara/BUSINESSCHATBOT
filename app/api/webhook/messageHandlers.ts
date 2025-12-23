@@ -265,11 +265,13 @@ export async function handleMessage(sender_psid: string, received_message: strin
             const messageCount = await incrementMessageCount(lead.id);
             console.log(`Lead ${lead.id} message count: ${messageCount}`);
 
-            // Try to extract name from conversation after a few messages
+            // Try to extract name from conversation after a few messages (runs in background)
             if (messageCount >= 3 && messageCount <= 8) {
-                extractAndUpdateLeadName(lead.id, sender_psid).catch((err: unknown) => {
-                    console.error('Error extracting name from conversation:', err);
-                });
+                setTimeout(() => {
+                    extractAndUpdateLeadName(lead.id, sender_psid).catch((err: unknown) => {
+                        console.error('Error extracting name from conversation:', err);
+                    });
+                }, 500); // Small delay to not interfere with main flow
             }
 
             // Get conversation history for better contact extraction
