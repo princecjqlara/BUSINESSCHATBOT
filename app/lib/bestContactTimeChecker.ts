@@ -55,7 +55,7 @@ export function isWithinBestContactTime(bestTimes: BestContactTimesData | null):
 
 /**
  * Get the next best contact time window
- * Returns when the next optimal time to contact will be
+ * Returns when the next optimal time to contact will be (in UTC, representing PHT time)
  */
 export function getNextBestContactTimeWindow(
     bestTimes: BestContactTimesData | null
@@ -87,6 +87,21 @@ export function getNextBestContactTimeWindow(
         return a.startHour - b.startHour;
     });
 
+    /**
+     * Helper: Create a proper Date in UTC that represents the given PHT time
+     * For example: 8 AM PHT = 00:00 UTC (8 - 8 = 0)
+     */
+    function createPHTDate(basePHT: Date, daysToAdd: number, phtHour: number): Date {
+        // Start from current PHT date
+        const targetDate = new Date(basePHT);
+        targetDate.setDate(targetDate.getDate() + daysToAdd);
+        targetDate.setHours(phtHour, 0, 0, 0);
+
+        // Convert PHT to UTC by subtracting 8 hours
+        const phtOffsetMs = 8 * 60 * 60 * 1000;
+        return new Date(targetDate.getTime() - phtOffsetMs);
+    }
+
     // Find next window (today or future)
     for (const window of sortedWindows) {
         const windowDayOrder = dayOrder[window.dayOfWeek];
@@ -95,17 +110,14 @@ export function getNextBestContactTimeWindow(
 
         // Check if window is today and in the future
         if (windowDayOrder === currentDayOrder && windowStartMinutes > currentTotalMinutes) {
-            const nextDate = new Date(now);
-            nextDate.setHours(window.startHour, 0, 0, 0);
+            const nextDate = createPHTDate(now, 0, window.startHour);
             return { date: nextDate, window };
         }
 
         // Check if window is in a future day
         if (windowDayOrder > currentDayOrder) {
             const daysUntil = windowDayOrder - currentDayOrder;
-            const nextDate = new Date(now);
-            nextDate.setDate(nextDate.getDate() + daysUntil);
-            nextDate.setHours(window.startHour, 0, 0, 0);
+            const nextDate = createPHTDate(now, daysUntil, window.startHour);
             return { date: nextDate, window };
         }
     }
@@ -117,9 +129,7 @@ export function getNextBestContactTimeWindow(
         const currentDayOrder = dayOrder[currentDay];
         const daysUntil = 7 - currentDayOrder + firstDayOrder;
 
-        const nextDate = new Date(now);
-        nextDate.setDate(nextDate.getDate() + daysUntil);
-        nextDate.setHours(firstWindow.startHour, 0, 0, 0);
+        const nextDate = createPHTDate(now, daysUntil, firstWindow.startHour);
         return { date: nextDate, window: firstWindow };
     }
 
