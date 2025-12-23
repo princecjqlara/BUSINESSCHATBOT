@@ -1,7 +1,6 @@
 import { supabase } from './supabase';
 import { sendMessengerMessage, disableBotForLead } from './messengerService';
 import { getBotResponse } from './chatService';
-import { scheduleFollowUpMessage } from './scheduledMessageService';
 
 interface WorkflowNode {
     id: string;
@@ -242,30 +241,13 @@ Respond with ONLY the message text to send, nothing else. Keep it natural and co
                 }
             }
 
-            // Use best time contact scheduling if enabled, otherwise send immediately
-            // Get page ID from execution data if available
-            const { data: execData } = await supabase
-                .from('workflow_executions')
-                .select('execution_data')
-                .eq('id', executionId)
-                .single();
-
-            const executionData = (execData?.execution_data as Record<string, unknown>) || {};
-            const pageId = executionData.pageId as string | undefined;
-
-            // Schedule or send based on best time contact setting
-            await scheduleFollowUpMessage(
-                context.leadId,
-                context.senderId,
-                messageText,
-                pageId,
-                {
-                    messagingType: 'MESSAGE_TAG',
-                    tag: 'ACCOUNT_UPDATE',
-                    workflowId: workflowId || '',
-                    nodeId: node.id,
-                }
-            );
+            // Send message directly for workflows (workflow wait nodes control timing)
+            console.log(`[Workflow] Sending message: "${messageText.substring(0, 50)}..."`);
+            await sendMessengerMessage(context.senderId, messageText, {
+                messagingType: 'MESSAGE_TAG',
+                tag: 'ACCOUNT_UPDATE',
+            });
+            console.log(`[Workflow] Message sent successfully`);
             return getNextNode(node.id, workflowData);
 
         case 'wait':
