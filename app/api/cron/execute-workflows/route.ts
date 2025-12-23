@@ -62,10 +62,11 @@ export async function GET(req: Request) {
                     .eq('id', execution.id);
 
                 const workflowData = (execution.workflows as any).workflow_data;
+                // Pass workflowId and skipWait=false for production scheduling
                 await continueExecution(execution.id, workflowData, {
                     leadId: execution.lead_id,
                     senderId: lead.sender_id,
-                });
+                }, execution.workflow_id, false);
 
                 console.log('Processed execution:', execution.id);
             } catch (execError) {
@@ -128,10 +129,11 @@ export async function POST() {
                     .eq('id', execution.id);
 
                 const workflowData = (execution.workflows as any).workflow_data;
+                // Pass workflowId and skipWait=false for production scheduling
                 await continueExecution(execution.id, workflowData, {
                     leadId: execution.lead_id,
                     senderId: lead.sender_id,
-                });
+                }, execution.workflow_id, false);
 
                 console.log('Processed execution:', execution.id);
             } catch (execError) {

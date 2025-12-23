@@ -444,7 +444,8 @@ export async function triggerWorkflowsForStage(stageId: string, leadId: string):
     for (const workflow of workflows) {
         console.log(`Executing workflow: ${workflow.name} (${workflow.id})`);
         // Skip publish check since we already filtered for published workflows
-        await executeWorkflow(workflow.id, leadId, lead.sender_id, true);
+        // skipWait=false for production - wait nodes will schedule for later
+        await executeWorkflow(workflow.id, leadId, lead.sender_id, true, false);
     }
 }
 
