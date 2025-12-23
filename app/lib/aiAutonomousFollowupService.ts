@@ -92,6 +92,7 @@ async function getFollowupSettings(): Promise<BotSettings> {
 
 /**
  * Get leads that may need an AI-initiated follow-up
+ * AI will decide based on context whether to follow up, not fixed time thresholds
  */
 export async function getLeadsNeedingFollowup(limit: number = 20): Promise<LeadForFollowup[]> {
     const settings = await getFollowupSettings();
@@ -101,13 +102,15 @@ export async function getLeadsNeedingFollowup(limit: number = 20): Promise<LeadF
         return [];
     }
 
-    const staleThresholdMs = settings.ai_followup_stale_threshold_hours * 60 * 60 * 1000;
-    const cooldownMs = settings.ai_followup_cooldown_hours * 60 * 60 * 1000;
+    // Minimal anti-spam cooldown (1 hour) - just to prevent rapid-fire messages
+    const minCooldownMs = 60 * 60 * 1000; // 1 hour
     const now = new Date();
-    const staleThreshold = new Date(now.getTime() - staleThresholdMs);
-    const cooldownThreshold = new Date(now.getTime() - cooldownMs);
+    const minCooldownThreshold = new Date(now.getTime() - minCooldownMs);
 
-    // Find leads with stale conversations that haven't been followed up recently
+    // Only look at leads with activity in the last 7 days (active leads)
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+    // Get active leads - let AI decide if they need follow-up
     const { data: leads, error } = await supabase
         .from('leads')
         .select(`
@@ -122,10 +125,10 @@ export async function getLeadsNeedingFollowup(limit: number = 20): Promise<LeadF
             pipeline_stages(name)
         `)
         .eq('bot_disabled', false)
-        .lt('last_message_at', staleThreshold.toISOString())
-        .or(`last_ai_followup_at.is.null,last_ai_followup_at.lt.${cooldownThreshold.toISOString()}`)
-        .gt('message_count', 1) // Only leads with some conversation history
-        .order('last_message_at', { ascending: true })
+        .gt('last_message_at', sevenDaysAgo.toISOString()) // Only active leads (last 7 days)
+        .or(`last_ai_followup_at.is.null,last_ai_followup_at.lt.${minCooldownThreshold.toISOString()}`) // Anti-spam only
+        .gt('message_count', 0) // Any conversation history
+        .order('last_message_at', { ascending: false }) // Most recent first
         .limit(limit);
 
     if (error) {
