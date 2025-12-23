@@ -65,12 +65,13 @@ async function getFollowupSettings(): Promise<BotSettings> {
         .single();
 
     if (error || !data) {
+        // Aggressive sales defaults - follow up quickly
         return {
             enable_ai_autonomous_followup: false,
             enable_best_time_contact: false,
-            ai_followup_cooldown_hours: 24,
-            ai_followup_stale_threshold_hours: 48,
-            ai_followup_max_per_lead: 3,
+            ai_followup_cooldown_hours: 4, // 4 hours between follow-ups
+            ai_followup_stale_threshold_hours: 1, // Consider stale after 1 hour
+            ai_followup_max_per_lead: 5, // Up to 5 follow-ups per lead
             bot_name: 'Assistant',
             bot_tone: 'friendly and professional',
             bot_instructions: null,
@@ -80,9 +81,9 @@ async function getFollowupSettings(): Promise<BotSettings> {
     return {
         enable_ai_autonomous_followup: data.enable_ai_autonomous_followup ?? false,
         enable_best_time_contact: data.enable_best_time_contact ?? false,
-        ai_followup_cooldown_hours: data.ai_followup_cooldown_hours ?? 24,
-        ai_followup_stale_threshold_hours: data.ai_followup_stale_threshold_hours ?? 48,
-        ai_followup_max_per_lead: data.ai_followup_max_per_lead ?? 3,
+        ai_followup_cooldown_hours: data.ai_followup_cooldown_hours ?? 4, // Aggressive default
+        ai_followup_stale_threshold_hours: data.ai_followup_stale_threshold_hours ?? 1, // Quick follow-up
+        ai_followup_max_per_lead: data.ai_followup_max_per_lead ?? 5,
         bot_name: data.bot_name ?? 'Assistant',
         bot_tone: data.bot_tone ?? 'friendly and professional',
         bot_instructions: data.bot_instructions ?? null,
@@ -197,7 +198,7 @@ export async function shouldAiFollowup(
         .map(m => `${m.role === 'user' ? 'Customer' : 'Bot'}: ${m.content}`)
         .join('\n');
 
-    const prompt = `You are an AI sales assistant analyzing whether to send a follow-up message to a customer.
+    const prompt = `You are an AI SALES assistant whose PRIMARY GOAL is CLOSING DEALS through follow-ups.
 
 CUSTOMER CONTEXT:
 - Name: ${lead.name || 'Unknown'}
@@ -209,21 +210,24 @@ CUSTOMER CONTEXT:
 RECENT CONVERSATION:
 ${conversationSummary || '(No recent conversation)'}
 
-INSTRUCTIONS:
-Analyze this situation and decide if sending a follow-up message is appropriate.
+SALES FOLLOW-UP GUIDELINES:
+1. ALWAYS lean towards following up - silence means lost opportunity
+2. Every lead is a potential sale - don't let them go cold
+3. If they showed ANY interest, follow up
+4. If conversation ended without a clear "no", follow up
+5. Even if they went quiet, a friendly check-in can revive the deal
 
-Consider:
-1. Did the conversation end naturally or did it seem unfinished?
-2. Was the customer interested or just browsing?
-3. Is there value we can provide by following up?
-4. Would a follow-up be welcome or annoying?
-5. What's the best approach for this follow-up?
+DECIDE IF FOLLOW-UP IS NEEDED:
+- Did they show interest in products/services? → YES, follow up
+- Did conversation end without resolution? → YES, follow up
+- Have they been quiet for a while? → YES, follow up to re-engage
+- Only skip if: They clearly said NO, or are already a completed sale
 
 RESPOND IN JSON FORMAT ONLY:
 {
     "shouldFollowup": true/false,
     "reasoning": "Brief explanation of your decision",
-    "followupType": "stale_conversation" | "re_engagement" | "nurture",
+    "followupType": "stale_conversation" | "re_engagement" | "nurture" | "closing",
     "urgency": "low" | "medium" | "high",
     "suggestedApproach": "Brief description of what the follow-up should focus on"
 }`;
