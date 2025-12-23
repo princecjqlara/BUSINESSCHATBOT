@@ -191,8 +191,10 @@ export async function getLeadsNeedingFollowup(limit: number = 20): Promise<LeadF
                 .eq('lead_id', lead.id)
                 .in('status', ['sent', 'scheduled']);
 
+            const followupCount = count || 0;
+
             // Skip if already at max follow-ups
-            if ((count || 0) >= settings.ai_followup_max_per_lead) {
+            if (followupCount >= settings.ai_followup_max_per_lead) {
                 return null;
             }
 
@@ -205,6 +207,7 @@ export async function getLeadsNeedingFollowup(limit: number = 20): Promise<LeadF
                 last_ai_followup_at: lead.last_ai_followup_at,
                 message_count: lead.message_count || 0,
                 best_contact_times: lead.best_contact_times as BestContactTimesData | null,
+                ai_followup_count: followupCount,
             };
         })
     );
