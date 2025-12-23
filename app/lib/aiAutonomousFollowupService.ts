@@ -230,7 +230,7 @@ RESPOND IN JSON FORMAT ONLY:
 {
     "shouldFollowup": true/false,
     "reasoning": "Brief explanation of your decision",
-    "followupType": "stale_conversation" | "re_engagement" | "nurture" | "closing",
+    "followupType": "stale_conversation" | "re_engagement" | "nurture",
     "urgency": "low" | "medium" | "high",
     "suggestedApproach": "Brief description of what the follow-up should focus on"
 }`;
