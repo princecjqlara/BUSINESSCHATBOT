@@ -94,6 +94,11 @@ export async function GET(req: Request) {
 
         const pages: FacebookPage[] = pagesData.data || [];
 
+        console.log(`[Facebook Auth] User has access to ${pages.length} page(s)`);
+        pages.forEach((page: FacebookPage) => {
+            console.log(`[Facebook Auth] Page: ${page.name} (ID: ${page.id})`);
+        });
+
         // Encode pages data for URL (will be stored in session/displayed in UI)
         const pagesPayload = pages.map((page: FacebookPage) => ({
             id: page.id,
@@ -101,6 +106,14 @@ export async function GET(req: Request) {
             access_token: page.access_token,
             picture: page.picture?.data?.url || null,
         }));
+
+        // If no pages found, provide helpful error message
+        if (pages.length === 0) {
+            console.log('[Facebook Auth] No pages found for this user');
+            const redirectUrl = new URL('/settings', process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000');
+            redirectUrl.searchParams.set('error', 'No Facebook Pages found. Make sure you have admin access to at least one Facebook Page.');
+            return NextResponse.redirect(redirectUrl.toString());
+        }
 
         // Store pages in a temporary way - using URL params for simplicity
         // In production, you might want to use a server-side session or encrypted cookie

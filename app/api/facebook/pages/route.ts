@@ -50,12 +50,13 @@ export async function POST(req: Request) {
         // Check if page already exists
         const { data: existing } = await supabase
             .from('connected_pages')
-            .select('id')
+            .select('id, page_name')
             .eq('page_id', pageId)
             .single();
 
         if (existing) {
-            // Update existing page
+            console.log(`[Page Connect] Page ${pageName} (${pageId}) already exists, updating access token...`);
+            // Update existing page with new access token (could be from different account)
             const { error: updateError } = await supabase
                 .from('connected_pages')
                 .update({
@@ -71,7 +72,9 @@ export async function POST(req: Request) {
                 console.error('Error updating page:', updateError);
                 return NextResponse.json({ error: 'Failed to update page' }, { status: 500 });
             }
+            console.log(`[Page Connect] Page ${pageName} updated successfully with new access token`);
         } else {
+            console.log(`[Page Connect] Connecting new page: ${pageName} (${pageId})`);
             // Insert new page
             const { error: insertError } = await supabase
                 .from('connected_pages')
@@ -88,6 +91,7 @@ export async function POST(req: Request) {
                 console.error('Error inserting page:', insertError);
                 return NextResponse.json({ error: 'Failed to connect page' }, { status: 500 });
             }
+            console.log(`[Page Connect] Page ${pageName} connected successfully`);
         }
 
         // Subscribe to webhook
