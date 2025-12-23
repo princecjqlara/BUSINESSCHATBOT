@@ -640,12 +640,11 @@ export async function cancelPendingFollowupsForLead(leadId: string): Promise<{ c
         console.log(`[AI Followup] Cancelling pending follow-ups for lead ${leadId} (user replied)`);
 
         // Update all pending/scheduled follow-ups to 'cancelled'
+        // Note: Only updating status field, not cancelled_at/cancel_reason (columns may not exist)
         const { data, error } = await supabase
             .from('ai_followups')
             .update({
-                status: 'cancelled',
-                cancelled_at: new Date().toISOString(),
-                cancel_reason: 'user_replied'
+                status: 'cancelled'
             })
             .eq('lead_id', leadId)
             .in('status', ['pending', 'scheduled'])
