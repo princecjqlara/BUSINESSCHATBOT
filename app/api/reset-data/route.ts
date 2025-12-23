@@ -35,83 +35,109 @@ export async function POST(req: Request) {
             );
         }
 
-        const results: { table: string; deleted: number | null; error?: string }[] = [];
+        const results: { table: string; success: boolean; error?: string }[] = [];
 
         // Order matters - delete in correct order to respect foreign key constraints
+        // Use 'not is null' pattern to match all rows
 
         // 1. Delete AI follow-ups
-        const { error: followupsError, count: followupsCount } = await supabase
-            .from('ai_followups')
-            .delete()
-            .neq('id', '00000000-0000-0000-0000-000000000000') // Match all
-            .select('*', { count: 'exact', head: true });
-
-        if (followupsError) {
-            results.push({ table: 'ai_followups', deleted: null, error: followupsError.message });
-        } else {
-            // Actually delete
-            await supabase.from('ai_followups').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-            results.push({ table: 'ai_followups', deleted: followupsCount });
+        try {
+            const { error } = await supabase
+                .from('ai_followups')
+                .delete()
+                .not('id', 'is', null);
+            results.push({ table: 'ai_followups', success: !error, error: error?.message });
+        } catch (e) {
+            results.push({ table: 'ai_followups', success: false, error: String(e) });
         }
 
         // 2. Delete scheduled messages
-        const { error: scheduledError } = await supabase
-            .from('scheduled_messages')
-            .delete()
-            .neq('id', '00000000-0000-0000-0000-000000000000');
-        results.push({ table: 'scheduled_messages', deleted: scheduledError ? null : -1, error: scheduledError?.message });
+        try {
+            const { error } = await supabase
+                .from('scheduled_messages')
+                .delete()
+                .not('id', 'is', null);
+            results.push({ table: 'scheduled_messages', success: !error, error: error?.message });
+        } catch (e) {
+            results.push({ table: 'scheduled_messages', success: false, error: String(e) });
+        }
 
         // 3. Delete workflow executions
-        const { error: workflowExecError } = await supabase
-            .from('workflow_executions')
-            .delete()
-            .neq('id', '00000000-0000-0000-0000-000000000000');
-        results.push({ table: 'workflow_executions', deleted: workflowExecError ? null : -1, error: workflowExecError?.message });
+        try {
+            const { error } = await supabase
+                .from('workflow_executions')
+                .delete()
+                .not('id', 'is', null);
+            results.push({ table: 'workflow_executions', success: !error, error: error?.message });
+        } catch (e) {
+            results.push({ table: 'workflow_executions', success: false, error: String(e) });
+        }
 
         // 4. Delete ML behavior events
-        const { error: mlEventsError } = await supabase
-            .from('ml_behavior_events')
-            .delete()
-            .gte('id', 0);
-        results.push({ table: 'ml_behavior_events', deleted: mlEventsError ? null : -1, error: mlEventsError?.message });
+        try {
+            const { error } = await supabase
+                .from('ml_behavior_events')
+                .delete()
+                .not('id', 'is', null);
+            results.push({ table: 'ml_behavior_events', success: !error, error: error?.message });
+        } catch (e) {
+            results.push({ table: 'ml_behavior_events', success: false, error: String(e) });
+        }
 
         // 5. Delete lead goal completions
-        const { error: goalCompletionsError } = await supabase
-            .from('lead_goal_completions')
-            .delete()
-            .neq('id', '00000000-0000-0000-0000-000000000000');
-        results.push({ table: 'lead_goal_completions', deleted: goalCompletionsError ? null : -1, error: goalCompletionsError?.message });
+        try {
+            const { error } = await supabase
+                .from('lead_goal_completions')
+                .delete()
+                .not('id', 'is', null);
+            results.push({ table: 'lead_goal_completions', success: !error, error: error?.message });
+        } catch (e) {
+            results.push({ table: 'lead_goal_completions', success: false, error: String(e) });
+        }
 
         // 6. Delete conversations
-        const { error: conversationsError } = await supabase
-            .from('conversations')
-            .delete()
-            .gte('id', 0);
-        results.push({ table: 'conversations', deleted: conversationsError ? null : -1, error: conversationsError?.message });
+        try {
+            const { error } = await supabase
+                .from('conversations')
+                .delete()
+                .not('id', 'is', null);
+            results.push({ table: 'conversations', success: !error, error: error?.message });
+        } catch (e) {
+            results.push({ table: 'conversations', success: false, error: String(e) });
+        }
 
         // 7. Delete leads
-        const { error: leadsError } = await supabase
-            .from('leads')
-            .delete()
-            .neq('id', '00000000-0000-0000-0000-000000000000');
-        results.push({ table: 'leads', deleted: leadsError ? null : -1, error: leadsError?.message });
+        try {
+            const { error } = await supabase
+                .from('leads')
+                .delete()
+                .not('id', 'is', null);
+            results.push({ table: 'leads', success: !error, error: error?.message });
+        } catch (e) {
+            results.push({ table: 'leads', success: false, error: String(e) });
+        }
 
         // 8. Delete connected pages
-        const { error: pagesError } = await supabase
-            .from('connected_pages')
-            .delete()
-            .neq('id', '00000000-0000-0000-0000-000000000000');
-        results.push({ table: 'connected_pages', deleted: pagesError ? null : -1, error: pagesError?.message });
+        try {
+            const { error } = await supabase
+                .from('connected_pages')
+                .delete()
+                .not('id', 'is', null);
+            results.push({ table: 'connected_pages', success: !error, error: error?.message });
+        } catch (e) {
+            results.push({ table: 'connected_pages', success: false, error: String(e) });
+        }
 
         // Check for any errors
-        const errors = results.filter(r => r.error);
+        const failures = results.filter(r => !r.success);
 
-        if (errors.length > 0) {
+        if (failures.length > 0) {
+            console.error('[Reset Data] Some tables failed:', failures);
             return NextResponse.json({
                 success: false,
                 message: 'Some tables failed to reset',
                 results,
-                errors,
+                failures,
             }, { status: 500 });
         }
 
@@ -133,7 +159,7 @@ export async function POST(req: Request) {
     } catch (error) {
         console.error('[Reset Data] Error:', error);
         return NextResponse.json(
-            { error: error instanceof Error ? error.message : 'Failed to reset data' },
+            { error: error instanceof Error ? error.message : 'Failed to reset data', details: String(error) },
             { status: 500 }
         );
     }
