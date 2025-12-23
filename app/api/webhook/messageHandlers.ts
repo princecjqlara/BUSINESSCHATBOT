@@ -4,6 +4,7 @@ import { isTakeoverActive } from '@/app/lib/humanTakeoverService';
 import { analyzeImageForReceipt, isConfirmedReceipt } from '@/app/lib/receiptDetectionService';
 import { analyzeAndUpdateStage, getOrCreateLead, incrementMessageCount, moveLeadToReceiptStage, shouldAnalyzeStage } from '@/app/lib/pipelineService';
 import { computeBestContactTimes, storeBestContactTimes } from '@/app/lib/bestContactTimesService';
+import { cancelPendingFollowupsForLead } from '@/app/lib/aiAutonomousFollowupService';
 import { stripMediaLinksFromText } from '@/app/lib/mediaUtils';
 import { supabase } from '@/app/lib/supabase';
 import { callSendAPI, sendMediaAttachments, sendPaymentMethodCards, sendProductCards, sendPropertyCards, sendTypingIndicator } from './facebookClient';
@@ -264,6 +265,11 @@ export async function handleMessage(sender_psid: string, received_message: strin
         if (lead) {
             const messageCount = await incrementMessageCount(lead.id);
             console.log(`Lead ${lead.id} message count: ${messageCount}`);
+
+            // STOP ON REPLY: Cancel any pending/scheduled AI follow-ups since user replied
+            cancelPendingFollowupsForLead(lead.id).catch((err: unknown) => {
+                console.error('Error cancelling pending follow-ups:', err);
+            });
 
             // Get conversation history for better contact extraction
             let conversationHistory: Array<{ role: string; content: string }> = [];

@@ -630,3 +630,40 @@ export async function runAiAutonomousFollowups(): Promise<{
         errors,
     };
 }
+
+/**
+ * Cancel pending/scheduled follow-ups for a lead when they reply
+ * This is called when a user sends a message to stop any scheduled follow-ups
+ */
+export async function cancelPendingFollowupsForLead(leadId: string): Promise<{ cancelled: number; error?: string }> {
+    try {
+        console.log(`[AI Followup] Cancelling pending follow-ups for lead ${leadId} (user replied)`);
+
+        // Update all pending/scheduled follow-ups to 'cancelled'
+        const { data, error } = await supabase
+            .from('ai_followups')
+            .update({
+                status: 'cancelled',
+                cancelled_at: new Date().toISOString(),
+                cancel_reason: 'user_replied'
+            })
+            .eq('lead_id', leadId)
+            .in('status', ['pending', 'scheduled'])
+            .select('id');
+
+        if (error) {
+            console.error(`[AI Followup] Error cancelling follow-ups:`, error);
+            return { cancelled: 0, error: error.message };
+        }
+
+        const cancelledCount = data?.length || 0;
+        if (cancelledCount > 0) {
+            console.log(`[AI Followup] Cancelled ${cancelledCount} pending follow-up(s) for lead ${leadId}`);
+        }
+
+        return { cancelled: cancelledCount };
+    } catch (error) {
+        console.error(`[AI Followup] Error in cancelPendingFollowupsForLead:`, error);
+        return { cancelled: 0, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+}
