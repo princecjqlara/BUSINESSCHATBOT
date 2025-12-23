@@ -26,6 +26,7 @@ export interface LeadForFollowup {
     last_ai_followup_at: string | null;
     message_count: number;
     best_contact_times: BestContactTimesData | null;
+    ai_followup_count: number;
 }
 
 export interface FollowupDecision {
@@ -49,9 +50,38 @@ interface BotSettings {
     ai_followup_cooldown_hours: number;
     ai_followup_stale_threshold_hours: number;
     ai_followup_max_per_lead: number;
+    ai_followup_aggressiveness: number; // 1-10 scale: 1=conservative, 10=very aggressive
     bot_name: string;
     bot_tone: string;
     bot_instructions: string | null;
+}
+
+/**
+ * Aggressiveness level descriptions and parameters
+ * Level 1-3: Conservative (1-2 follow-ups/week, longer waits)
+ * Level 4-6: Moderate (3-5 follow-ups/week, balanced)
+ * Level 7-10: Aggressive (5-10+ follow-ups/week, quick engagement)
+ */
+function getAggressivenessConfig(level: number) {
+    // Clamp to 1-10
+    const safeLevel = Math.max(1, Math.min(10, level));
+
+    // Calculate parameters based on level
+    // Min cooldown: 0.5h (level 10) to 12h (level 1)
+    const minCooldownHours = Math.max(0.5, 12 - (safeLevel * 1.15));
+
+    // Max follow-ups per lead: 2 (level 1) to 15 (level 10)
+    const maxPerLead = Math.round(2 + (safeLevel * 1.3));
+
+    return {
+        minCooldownHours,
+        maxPerLead,
+        description: safeLevel <= 3 ? 'Conservative' : safeLevel <= 6 ? 'Moderate' : 'Aggressive',
+        estimatedMessagesPerWeek: {
+            min: Math.round(safeLevel * 0.5),
+            max: Math.round(safeLevel * 2),
+        }
+    };
 }
 
 /**
@@ -65,13 +95,13 @@ async function getFollowupSettings(): Promise<BotSettings> {
         .single();
 
     if (error || !data) {
-        // Aggressive sales defaults - follow up quickly
         return {
             enable_ai_autonomous_followup: false,
             enable_best_time_contact: false,
-            ai_followup_cooldown_hours: 4, // 4 hours between follow-ups
-            ai_followup_stale_threshold_hours: 1, // Consider stale after 1 hour
-            ai_followup_max_per_lead: 5, // Up to 5 follow-ups per lead
+            ai_followup_cooldown_hours: 4,
+            ai_followup_stale_threshold_hours: 1,
+            ai_followup_max_per_lead: 5,
+            ai_followup_aggressiveness: 5, // Default: moderate
             bot_name: 'Assistant',
             bot_tone: 'friendly and professional',
             bot_instructions: null,
@@ -81,9 +111,10 @@ async function getFollowupSettings(): Promise<BotSettings> {
     return {
         enable_ai_autonomous_followup: data.enable_ai_autonomous_followup ?? false,
         enable_best_time_contact: data.enable_best_time_contact ?? false,
-        ai_followup_cooldown_hours: data.ai_followup_cooldown_hours ?? 4, // Aggressive default
-        ai_followup_stale_threshold_hours: data.ai_followup_stale_threshold_hours ?? 1, // Quick follow-up
+        ai_followup_cooldown_hours: data.ai_followup_cooldown_hours ?? 4,
+        ai_followup_stale_threshold_hours: data.ai_followup_stale_threshold_hours ?? 1,
         ai_followup_max_per_lead: data.ai_followup_max_per_lead ?? 5,
+        ai_followup_aggressiveness: data.ai_followup_aggressiveness ?? 5,
         bot_name: data.bot_name ?? 'Assistant',
         bot_tone: data.bot_tone ?? 'friendly and professional',
         bot_instructions: data.bot_instructions ?? null,
@@ -201,7 +232,16 @@ export async function shouldAiFollowup(
         .map(m => `${m.role === 'user' ? 'Customer' : 'Bot'}: ${m.content}`)
         .join('\n');
 
+    // Get aggressiveness config
+    const aggressivenessConfig = getAggressivenessConfig(settings.ai_followup_aggressiveness);
+    const aggressivenessLevel = settings.ai_followup_aggressiveness;
+
     const prompt = `You are an AI SALES assistant whose PRIMARY GOAL is CLOSING DEALS through follow-ups.
+
+AGGRESSIVENESS LEVEL: ${aggressivenessLevel}/10 (${aggressivenessConfig.description})
+${aggressivenessLevel >= 7 ? '→ Be VERY proactive, follow up quickly and frequently' :
+            aggressivenessLevel >= 4 ? '→ Balance follow-up frequency with not being pushy' :
+                '→ Be conservative, only follow up when clearly needed'}
 
 CUSTOMER CONTEXT:
 - Name: ${lead.name || 'Unknown'}
@@ -209,22 +249,28 @@ CUSTOMER CONTEXT:
 - Total Messages Exchanged: ${lead.message_count}
 - Hours Since Last Message: ${hoursSinceLastMessage || 'Unknown'}
 - Last AI Follow-up: ${lead.last_ai_followup_at ? new Date(lead.last_ai_followup_at).toLocaleDateString() : 'Never'}
+- Follow-ups Already Sent: ${lead.ai_followup_count || 0}
 
 RECENT CONVERSATION:
 ${conversationSummary || '(No recent conversation)'}
 
-SALES FOLLOW-UP GUIDELINES:
-1. ALWAYS lean towards following up - silence means lost opportunity
-2. Every lead is a potential sale - don't let them go cold
-3. If they showed ANY interest, follow up
-4. If conversation ended without a clear "no", follow up
-5. Even if they went quiet, a friendly check-in can revive the deal
-
-DECIDE IF FOLLOW-UP IS NEEDED:
-- Did they show interest in products/services? → YES, follow up
-- Did conversation end without resolution? → YES, follow up
-- Have they been quiet for a while? → YES, follow up to re-engage
-- Only skip if: They clearly said NO, or are already a completed sale
+FOLLOW-UP GUIDELINES (based on aggressiveness ${aggressivenessLevel}/10):
+${aggressivenessLevel >= 7 ? `
+1. Follow up IMMEDIATELY if silent for >30 minutes
+2. Be persistent but friendly
+3. Multiple follow-ups are OK (up to ${aggressivenessConfig.maxPerLead} per lead)
+4. Don't wait - every hour is a lost opportunity
+` : aggressivenessLevel >= 4 ? `
+1. Follow up if silent for 2-6 hours
+2. Space out follow-ups reasonably
+3. Up to ${aggressivenessConfig.maxPerLead} follow-ups per lead
+4. Balance persistence with respect
+` : `
+1. Only follow up if clearly interested but went quiet
+2. Wait at least 12+ hours before following up
+3. Maximum ${aggressivenessConfig.maxPerLead} follow-ups per lead
+4. Prioritize quality over quantity
+`}
 
 RESPOND IN JSON FORMAT ONLY:
 {
@@ -232,7 +278,8 @@ RESPOND IN JSON FORMAT ONLY:
     "reasoning": "Brief explanation of your decision",
     "followupType": "stale_conversation" | "re_engagement" | "nurture",
     "urgency": "low" | "medium" | "high",
-    "suggestedApproach": "Brief description of what the follow-up should focus on"
+    "suggestedApproach": "Brief description of what the follow-up should focus on",
+    "waitHours": 0 // Number of hours to wait before sending (0 = send now, or specify future time)
 }`;
 
     try {
