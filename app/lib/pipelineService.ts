@@ -45,22 +45,31 @@ export async function getOrCreateLead(senderId: string, pageAccessToken?: string
                 return { name: null, profilePic: null };
             }
 
-            // Method 1: Try the standard Graph API (might work for some apps)
+            // Method 1: Try the Messenger User Profile API (correct endpoint)
             try {
                 const url = `https://graph.facebook.com/v21.0/${senderId}?fields=first_name,last_name,name,profile_pic&access_token=${pageAccessToken}`;
-                console.log('Trying standard Graph API profile fetch:', senderId);
+                console.log('[ProfileFetch] Fetching profile for PSID:', senderId);
 
                 const profileRes = await fetch(url);
+                const responseText = await profileRes.text();
+
+                console.log('[ProfileFetch] Response status:', profileRes.status);
+                console.log('[ProfileFetch] Response body:', responseText.substring(0, 500));
+
                 if (profileRes.ok) {
-                    const profile = await profileRes.json();
+                    const profile = JSON.parse(responseText);
                     const name = profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || null;
                     if (name) {
-                        console.log('Got profile from standard Graph API:', name);
+                        console.log('[ProfileFetch] SUCCESS! Got name:', name);
                         return { name, profilePic: profile.profile_pic || null };
+                    } else {
+                        console.log('[ProfileFetch] Response OK but no name fields found in:', profile);
                     }
+                } else {
+                    console.log('[ProfileFetch] API call failed with status:', profileRes.status, responseText.substring(0, 200));
                 }
             } catch (e) {
-                console.log('Standard Graph API failed, trying alternatives...');
+                console.error('[ProfileFetch] Error in API call:', e);
             }
 
             // Method 2: Try the Messenger Platform User Profile API
