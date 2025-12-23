@@ -3,12 +3,27 @@
  * 
  * This service enables the AI to autonomously decide when and how to follow up
  * with leads based on conversation history, best contact times, and AI intuition.
+ * 
+ * NOW WITH HUMAN SPAM LOGIC: Makes decisions like a human salesperson would.
+ * Core principle: "Is the expected value > the annoyance cost?"
  */
 
 import { supabase } from './supabase';
 import { getBestContactTimes, BestContactTimesData } from './bestContactTimesService';
 import { getNextBestContactTimeWindow, isWithinBestContactTime } from './bestContactTimeChecker';
 import { sendMessengerMessage } from './messengerService';
+import {
+    makeSpamLogicDecision,
+    LeadContext,
+    ConversationMessage as SpamLogicMessage,
+    SpamLogicDecision,
+    advanceEscalationArc,
+    resetEscalationArc,
+    classifySpamSignal,
+    getTimingRelaxation,
+    detectSessionState,
+    SpamSignalAnalysis,
+} from './humanSpamLogic';
 import OpenAI from 'openai';
 
 // Initialize NVIDIA client for AI decisions
@@ -27,6 +42,10 @@ export interface LeadForFollowup {
     message_count: number;
     best_contact_times: BestContactTimesData | null;
     ai_followup_count: number;
+    // Human Spam Logic fields
+    escalation_arc_position: number;
+    consecutive_followups_no_response: number;
+    disengagement_signals: Record<string, unknown>;
 }
 
 export interface FollowupDecision {
@@ -123,7 +142,7 @@ async function getFollowupSettings(): Promise<BotSettings> {
 
 /**
  * Get leads that may need an AI-initiated follow-up
- * AI will decide based on context whether to follow up, not fixed time thresholds
+ * Now uses Human Spam Logic: position 5 leads are excluded (escalation complete)
  */
 export async function getLeadsNeedingFollowup(limit: number = 20): Promise<LeadForFollowup[]> {
     const settings = await getFollowupSettings();
@@ -138,11 +157,10 @@ export async function getLeadsNeedingFollowup(limit: number = 20): Promise<LeadF
     const now = new Date();
     const minCooldownThreshold = new Date(now.getTime() - minCooldownMs);
 
-    // Look at leads with activity in the last 30 days (expanded from 7 days)
-    // This ensures leads don't go "cold" - they stay in the system longer
+    // Look at leads with activity in the last 30 days
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-    // Get active leads - let AI decide if they need follow-up
+    // Get active leads - exclude those at escalation position 5 (stopped)
     const { data: leads, error } = await supabase
         .from('leads')
         .select(`
@@ -154,13 +172,17 @@ export async function getLeadsNeedingFollowup(limit: number = 20): Promise<LeadF
             message_count,
             best_contact_times,
             bot_disabled,
+            escalation_arc_position,
+            consecutive_followups_no_response,
+            disengagement_signals,
             pipeline_stages(name)
         `)
         .eq('bot_disabled', false)
-        .gt('last_message_at', thirtyDaysAgo.toISOString()) // Extended to 30 days (was 7)
-        .or(`last_ai_followup_at.is.null,last_ai_followup_at.lt.${minCooldownThreshold.toISOString()}`) // Anti-spam only
-        .gte('message_count', 0) // Include even leads with 0 messages (new leads)
-        .order('last_ai_followup_at', { ascending: true, nullsFirst: true }) // Prioritize leads never followed up
+        .gt('last_message_at', thirtyDaysAgo.toISOString())
+        .or(`last_ai_followup_at.is.null,last_ai_followup_at.lt.${minCooldownThreshold.toISOString()}`)
+        .or('escalation_arc_position.is.null,escalation_arc_position.lt.5') // Exclude position 5 (stopped)
+        .gte('message_count', 0)
+        .order('last_ai_followup_at', { ascending: true, nullsFirst: true })
         .limit(limit);
 
     if (error) {
@@ -182,8 +204,12 @@ export async function getLeadsNeedingFollowup(limit: number = 20): Promise<LeadF
         message_count: number | null;
         best_contact_times: unknown;
         bot_disabled: boolean;
+        escalation_arc_position: number | null;
+        consecutive_followups_no_response: number | null;
+        disengagement_signals: Record<string, unknown> | null;
         pipeline_stages: { name: string } | null;
     }
+
     const leadsWithCounts = await Promise.all(
         (leads as LeadFromDB[]).map(async (lead: LeadFromDB) => {
             const { count } = await supabase
@@ -209,6 +235,10 @@ export async function getLeadsNeedingFollowup(limit: number = 20): Promise<LeadF
                 message_count: lead.message_count || 0,
                 best_contact_times: lead.best_contact_times as BestContactTimesData | null,
                 ai_followup_count: followupCount,
+                // Human Spam Logic fields
+                escalation_arc_position: lead.escalation_arc_position || 1,
+                consecutive_followups_no_response: lead.consecutive_followups_no_response || 0,
+                disengagement_signals: lead.disengagement_signals || {},
             };
         })
     );
@@ -216,16 +246,72 @@ export async function getLeadsNeedingFollowup(limit: number = 20): Promise<LeadF
     return leadsWithCounts.filter((lead): lead is LeadForFollowup => lead !== null);
 }
 
+
 /**
  * Use AI to decide if a follow-up is appropriate for this lead
+ * NOW WITH HUMAN SPAM LOGIC: Uses spam tolerance framework before AI decision
  */
 export async function shouldAiFollowup(
     lead: LeadForFollowup,
     conversationHistory: { role: string; content: string }[]
-): Promise<FollowupDecision> {
+): Promise<FollowupDecision & { spamLogicDecision?: SpamLogicDecision }> {
     const settings = await getFollowupSettings();
 
-    // Calculate time since last message
+    // Convert lead to LeadContext for Human Spam Logic
+    const leadContext: LeadContext = {
+        id: lead.id,
+        senderId: lead.sender_id,
+        name: lead.name,
+        pipelineStage: lead.pipeline_stage_name,
+        messageCount: lead.message_count,
+        lastMessageAt: lead.last_message_at ? new Date(lead.last_message_at) : null,
+        lastAiFollowupAt: lead.last_ai_followup_at ? new Date(lead.last_ai_followup_at) : null,
+        escalationArcPosition: lead.escalation_arc_position || 1,
+        consecutiveFollowupsNoResponse: lead.consecutive_followups_no_response || 0,
+        disengagementSignals: lead.disengagement_signals || {},
+    };
+
+    // Convert conversation history for spam logic
+    const spamLogicHistory: SpamLogicMessage[] = conversationHistory.map(m => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+    }));
+
+    // ========================================
+    // STEP 1: Apply Human Spam Logic Framework
+    // ========================================
+    const spamDecision = makeSpamLogicDecision(
+        leadContext,
+        spamLogicHistory,
+        { aggressiveness: settings.ai_followup_aggressiveness }
+    );
+
+    console.log(`[AI Followup] Human Spam Logic for ${lead.name || lead.id}:`, {
+        score: spamDecision.score.total,
+        interpretation: spamDecision.score.interpretation,
+        escalationPosition: spamDecision.arc.position,
+        shouldFollowUp: spamDecision.shouldFollowUp,
+        reasoning: spamDecision.reasoning,
+        timing: spamDecision.timingRelaxation?.description,
+        sessionBreak: spamDecision.sessionState?.sessionBreakOccurred,
+        internalThought: spamDecision.internalThought?.substring(0, 100),
+    });
+
+    // If Human Spam Logic says NO, respect it immediately
+    if (!spamDecision.shouldFollowUp) {
+        return {
+            shouldFollowup: false,
+            reasoning: `Human Spam Logic: ${spamDecision.reasoning}`,
+            followupType: 'stale_conversation',
+            urgency: 'low',
+            suggestedApproach: '',
+            spamLogicDecision: spamDecision,
+        };
+    }
+
+    // ========================================
+    // STEP 2: AI Decision with Spam Context
+    // ========================================
     const lastMessageAt = lead.last_message_at ? new Date(lead.last_message_at) : null;
     const hoursSinceLastMessage = lastMessageAt
         ? Math.round((Date.now() - lastMessageAt.getTime()) / (1000 * 60 * 60))
@@ -236,59 +322,92 @@ export async function shouldAiFollowup(
         .map(m => `${m.role === 'user' ? 'Customer' : 'Bot'}: ${m.content}`)
         .join('\n');
 
-    // Get aggressiveness config
-    const aggressivenessConfig = getAggressivenessConfig(settings.ai_followup_aggressiveness);
-    const aggressivenessLevel = settings.ai_followup_aggressiveness;
+    // Build Human Spam Logic context for AI
+    const score = spamDecision.score;
+    const justification = spamDecision.justification;
+    const arc = spamDecision.arc;
+    const timingRelaxation = spamDecision.timingRelaxation;
+    const sessionState = spamDecision.sessionState;
+    const internalThought = spamDecision.internalThought;
 
-    const prompt = `You are an AI SALES assistant whose PRIMARY GOAL is CLOSING DEALS through follow-ups.
+    const prompt = `You are an AI SALES assistant making follow-up decisions using HUMAN LOGIC.
 
-AGGRESSIVENESS LEVEL: ${aggressivenessLevel}/10 (${aggressivenessConfig.description})
-${aggressivenessLevel >= 7 ? '→ Be VERY proactive, follow up quickly and frequently' :
-            aggressivenessLevel >= 4 ? '→ Balance follow-up frequency with not being pushy' :
-                '→ Be conservative, only follow up when clearly needed'}
+CORE PRINCIPLE: Don't ask "Am I being spammy?" - Ask "Is the expected value > the annoyance cost?"
 
-CUSTOMER CONTEXT:
+============== INTERNAL THOUGHT (AI'S REASONING) ==============
+"${internalThought}"
+
+============== SPAM TOLERANCE ANALYSIS ==============
+SCORE: ${score.total}/100 (${score.interpretation.toUpperCase()})
+Breakdown:
+- Stakes: ${score.breakdown.stakes}/25 (${score.breakdown.stakes >= 15 ? '⬆️ High' : score.breakdown.stakes >= 8 ? '➡️ Medium' : '⬇️ Low'})
+- Warmth: ${score.breakdown.warmth}/20 (${score.breakdown.warmth >= 12 ? '⬆️ Warm' : score.breakdown.warmth >= 7 ? '➡️ Lukewarm' : '⬇️ Cold'})
+- Channel: ${score.breakdown.channelNorms}/15 (Messenger = tolerant)
+- Urgency: ${score.breakdown.timePressure}/15
+- Engagement: ${score.breakdown.engagement}/15
+- Ambiguity: ${score.breakdown.silenceAmbiguity}/10
+
+TIMING: ${timingRelaxation.description}
+- Min interval: ${timingRelaxation.minIntervalMinutes} minutes
+- Session break: ${sessionState.sessionBreakOccurred ? 'Yes ✓' : `No (${sessionState.minutesSinceActivity}min ago)`}
+
+ESCALATION ARC: Position ${arc.position}/5 (${arc.description})
+${arc.position === 1 ? '→ First follow-up - normal spacing' :
+            arc.position === 2 ? '→ Second attempt - shorter timing OK' :
+                arc.position === 3 ? '→ Urgent nudge - be direct but friendly' :
+                    arc.position === 4 ? '→ FINAL attempt - make it count!' :
+                        '→ STOPPED - no more follow-ups'}
+
+JUSTIFICATION CONDITIONS (${justification.activeCount}/4 active):
+${justification.conditions.highStakes ? '✓' : '○'} A. Stakes are high
+${justification.conditions.ambiguousSilence ? '✓' : '○'} B. Silence is ambiguous (no clear "no")
+${justification.conditions.tolerantChannel ? '✓' : '○'} C. Channel tolerates noise
+${justification.conditions.asymmetricValue ? '✓' : '○'} D. Value to them > interruption cost
+
+============== CUSTOMER CONTEXT ==============
 - Name: ${lead.name || 'Unknown'}
 - Pipeline Stage: ${lead.pipeline_stage_name || 'New Lead'}
-- Total Messages Exchanged: ${lead.message_count}
+- Total Messages: ${lead.message_count}
 - Hours Since Last Message: ${hoursSinceLastMessage || 'Unknown'}
-- Last AI Follow-up: ${lead.last_ai_followup_at ? new Date(lead.last_ai_followup_at).toLocaleDateString() : 'Never'}
-- Follow-ups Already Sent: ${lead.ai_followup_count || 0}
+- Follow-ups Without Response: ${lead.consecutive_followups_no_response || 0}
 
-RECENT CONVERSATION:
+============== RECENT CONVERSATION ==============
 ${conversationSummary || '(No recent conversation)'}
 
-FOLLOW-UP GUIDELINES (based on aggressiveness ${aggressivenessLevel}/10):
-${aggressivenessLevel >= 7 ? `
-1. Follow up IMMEDIATELY if silent for >30 minutes
-2. Be persistent but friendly
-3. Multiple follow-ups are OK (up to ${aggressivenessConfig.maxPerLead} per lead)
-4. Don't wait - every hour is a lost opportunity
-` : aggressivenessLevel >= 4 ? `
-1. Follow up if silent for 2-6 hours
-2. Space out follow-ups reasonably
-3. Up to ${aggressivenessConfig.maxPerLead} follow-ups per lead
-4. Balance persistence with respect
-` : `
-1. Only follow up if clearly interested but went quiet
-2. Wait at least 12+ hours before following up
-3. Maximum ${aggressivenessConfig.maxPerLead} follow-ups per lead
-4. Prioritize quality over quantity
-`}
+============== SPAM SIGNAL GUIDANCE ==============
+Your message should signal ACCEPTABLE qualities:
+✅ URGENCY: "This is time-sensitive" - shows importance, not desperation
+✅ CARE: "I'm thinking about you" - shows genuine interest
+✅ RESPONSIBILITY: "I'm doing my job well" - shows professionalism
+
+Your message must AVOID signaling BAD qualities:
+❌ ANXIETY: "I'm nervous you haven't replied" - sounds needy
+❌ AUTOMATION: "This message feels robotic" - sounds impersonal  
+❌ DESPERATION: "Please please respond" - sounds pushy
+
+============== YOUR TASK ==============
+The Human Spam Logic framework already approved this follow-up (score ${score.total}).
+Now decide the APPROACH and TYPE of follow-up.
+
+Consider:
+1. At escalation position ${arc.position}, what tone is appropriate?
+2. What value can we provide in this follow-up?
+3. How can we re-engage without being pushy?
 
 RESPOND IN JSON FORMAT ONLY:
 {
-    "shouldFollowup": true/false,
-    "reasoning": "Brief explanation of your decision",
+    "shouldFollowup": true,
+    "reasoning": "Brief explanation using human logic",
     "followupType": "stale_conversation" | "re_engagement" | "nurture",
-    "urgency": "low" | "medium" | "high",
-    "suggestedApproach": "Brief description of what the follow-up should focus on",
-    "waitHours": 0 // Number of hours to wait before sending (0 = send now, or specify future time)
+    "urgency": "${arc.position >= 3 ? 'high' : arc.position >= 2 ? 'medium' : 'low'}",
+    "suggestedApproach": "What the follow-up should focus on",
+    "tone": "friendly" | "curious" | "helpful" | "direct",
+    "signalType": "urgency" | "care" | "responsibility"
 }`;
 
     try {
         const response = await client.chat.completions.create({
-            model: settings.bot_name ? 'deepseek-ai/deepseek-r1' : 'deepseek-ai/deepseek-v3.1',
+            model: 'deepseek-ai/deepseek-v3.1',
             messages: [{ role: 'user', content: prompt }],
             temperature: 0.3,
             max_tokens: 500,
@@ -301,25 +420,29 @@ RESPOND IN JSON FORMAT ONLY:
         if (jsonMatch) {
             const parsed = JSON.parse(jsonMatch[0]);
             return {
-                shouldFollowup: parsed.shouldFollowup ?? false,
-                reasoning: parsed.reasoning || 'No reasoning provided',
+                shouldFollowup: true, // We already passed spam logic check
+                reasoning: `${parsed.reasoning} [Score: ${score.total}/100, Arc: ${arc.position}/5]`,
                 followupType: parsed.followupType || 'stale_conversation',
-                urgency: parsed.urgency || 'low',
-                suggestedApproach: parsed.suggestedApproach || 'General check-in',
+                urgency: parsed.urgency || (arc.position >= 3 ? 'high' : 'medium'),
+                suggestedApproach: parsed.suggestedApproach || 'Friendly check-in',
+                spamLogicDecision: spamDecision,
             };
         }
     } catch (error) {
         console.error('[AI Followup] Error in decision:', error);
     }
 
+    // Default: proceed with follow-up since spam logic approved
     return {
-        shouldFollowup: false,
-        reasoning: 'Unable to determine - defaulting to no follow-up',
+        shouldFollowup: true,
+        reasoning: `Spam Logic approved (${score.total}/100) - defaulting to follow-up`,
         followupType: 'stale_conversation',
-        urgency: 'low',
-        suggestedApproach: '',
+        urgency: arc.position >= 3 ? 'high' : 'medium',
+        suggestedApproach: 'General check-in with value',
+        spamLogicDecision: spamDecision,
     };
 }
+
 
 /**
  * Generate a personalized follow-up message using AI
@@ -417,14 +540,18 @@ RESPOND WITH ONLY THE MESSAGE TEXT, nothing else.`;
 
 /**
  * Schedule and track an AI-initiated follow-up
+ * Now includes Human Spam Logic tracking and escalation arc advancement
  */
 export async function scheduleAiFollowup(
     lead: LeadForFollowup,
     followup: GeneratedFollowup,
-    decision: FollowupDecision
+    decision: FollowupDecision & { spamLogicDecision?: SpamLogicDecision }
 ): Promise<{ success: boolean; followupId?: string; error?: string }> {
     try {
-        // Create the follow-up record
+        // Extract spam logic data if available
+        const spamLogic = decision.spamLogicDecision;
+
+        // Create the follow-up record with spam logic tracking
         const { data: followupRecord, error: insertError } = await supabase
             .from('ai_followups')
             .insert({
@@ -442,6 +569,17 @@ export async function scheduleAiFollowup(
                     leadName: lead.name,
                     pipelineStage: lead.pipeline_stage_name,
                 },
+                // Human Spam Logic tracking fields
+                spam_tolerance_score: spamLogic?.score.total ?? null,
+                justification_conditions: spamLogic ? [
+                    spamLogic.justification.conditions.highStakes ? 'highStakes' : null,
+                    spamLogic.justification.conditions.ambiguousSilence ? 'ambiguousSilence' : null,
+                    spamLogic.justification.conditions.tolerantChannel ? 'tolerantChannel' : null,
+                    spamLogic.justification.conditions.asymmetricValue ? 'asymmetricValue' : null,
+                ].filter(Boolean) : [],
+                regret_test_passed: spamLogic?.regretTestPassed ?? null,
+                escalation_position: spamLogic?.arc.position ?? lead.escalation_arc_position,
+                score_breakdown: spamLogic?.score.breakdown ?? null,
             })
             .select()
             .single();
@@ -454,15 +592,31 @@ export async function scheduleAiFollowup(
         // If scheduled for now or past, send immediately
         if (!followup.scheduledFor || followup.scheduledFor <= new Date()) {
             await sendFollowupMessage(followupRecord.id, lead.sender_id, followup.message);
+
+            // Advance escalation arc after sending
+            const newPosition = Math.min(5, (lead.escalation_arc_position || 1) + 1);
+            await supabase
+                .from('leads')
+                .update({
+                    escalation_arc_position: newPosition,
+                    consecutive_followups_no_response: (lead.consecutive_followups_no_response || 0) + 1,
+                    follow_up_sequence_started_at: lead.escalation_arc_position === 1
+                        ? new Date().toISOString()
+                        : undefined, // Only set on first follow-up in sequence
+                })
+                .eq('id', lead.id);
+
+            console.log(`[AI Followup] Advanced escalation arc for lead ${lead.id}: ${lead.escalation_arc_position || 1} -> ${newPosition}`);
         }
 
-        console.log(`[AI Followup] Scheduled for lead ${lead.id}: "${followup.message.substring(0, 50)}..."`);
+        console.log(`[AI Followup] Scheduled for lead ${lead.id}: "${followup.message.substring(0, 50)}..." [Score: ${spamLogic?.score.total ?? 'N/A'}, Arc: ${spamLogic?.arc.position ?? 'N/A'}]`);
         return { success: true, followupId: followupRecord.id };
     } catch (error) {
         console.error('[AI Followup] Error scheduling:', error);
         return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
 }
+
 
 /**
  * Send a follow-up message and update its status
@@ -634,13 +788,13 @@ export async function runAiAutonomousFollowups(): Promise<{
 /**
  * Cancel pending/scheduled follow-ups for a lead when they reply
  * This is called when a user sends a message to stop any scheduled follow-ups
+ * NOW ALSO RESETS HUMAN SPAM LOGIC ESCALATION ARC
  */
 export async function cancelPendingFollowupsForLead(leadId: string): Promise<{ cancelled: number; error?: string }> {
     try {
         console.log(`[AI Followup] Cancelling pending follow-ups for lead ${leadId} (user replied)`);
 
         // Update all pending/scheduled follow-ups to 'cancelled'
-        // Note: Only updating status field, not cancelled_at/cancel_reason (columns may not exist)
         const { data, error } = await supabase
             .from('ai_followups')
             .update({
@@ -656,6 +810,25 @@ export async function cancelPendingFollowupsForLead(leadId: string): Promise<{ c
         }
 
         const cancelledCount = data?.length || 0;
+
+        // HUMAN SPAM LOGIC: Reset escalation arc when lead responds
+        // This is the key behavior - when they reply, we start fresh
+        const { error: resetError } = await supabase
+            .from('leads')
+            .update({
+                escalation_arc_position: 1,            // Back to normal spacing
+                consecutive_followups_no_response: 0,  // They responded!
+                follow_up_sequence_started_at: null,   // Clear sequence
+                disengagement_signals: {},             // Fresh start
+            })
+            .eq('id', leadId);
+
+        if (resetError) {
+            console.error(`[AI Followup] Error resetting escalation arc:`, resetError);
+        } else {
+            console.log(`[AI Followup] Reset escalation arc for lead ${leadId} (user replied)`);
+        }
+
         if (cancelledCount > 0) {
             console.log(`[AI Followup] Cancelled ${cancelledCount} pending follow-up(s) for lead ${leadId}`);
         }
@@ -666,3 +839,6 @@ export async function cancelPendingFollowupsForLead(leadId: string): Promise<{ c
         return { cancelled: 0, error: error instanceof Error ? error.message : 'Unknown error' };
     }
 }
+
+// Re-export resetEscalationArc for external use
+export { resetEscalationArc };
