@@ -3,24 +3,6 @@ import { supabase } from '@/app/lib/supabase';
 
 /**
  * Reset user data while keeping bot knowledge, settings, and goals
- * This clears:
- * - Connected pages
- * - Leads/contacts
- * - Conversations
- * - AI follow-ups
- * - Scheduled messages
- * - Workflow executions
- * - ML behavior events
- * - Lead goal completions
- * 
- * This keeps:
- * - Bot settings
- * - Bot goals
- * - Bot rules
- * - Documents (knowledge base)
- * - Pipeline stages
- * - Workflows (definitions, not executions)
- * - ML strategies
  */
 export async function POST(req: Request) {
     try {
@@ -35,101 +17,71 @@ export async function POST(req: Request) {
             );
         }
 
-        const results: { table: string; success: boolean; error?: string }[] = [];
+        const results: { table: string; success: boolean; error?: string; skipped?: boolean }[] = [];
+
+        // Helper function to safely delete from a table
+        async function safeDelete(tableName: string): Promise<{ success: boolean; error?: string; skipped?: boolean }> {
+            try {
+                const { error } = await supabase
+                    .from(tableName)
+                    .delete()
+                    .not('id', 'is', null);
+
+                if (error) {
+                    // If table doesn't exist, skip it
+                    if (error.message.includes('Could not find the table') ||
+                        error.message.includes('does not exist')) {
+                        return { success: true, skipped: true };
+                    }
+                    return { success: false, error: error.message };
+                }
+                return { success: true };
+            } catch (e) {
+                const errMsg = String(e);
+                if (errMsg.includes('Could not find the table') ||
+                    errMsg.includes('does not exist')) {
+                    return { success: true, skipped: true };
+                }
+                return { success: false, error: errMsg };
+            }
+        }
 
         // Order matters - delete in correct order to respect foreign key constraints
-        // Use 'not is null' pattern to match all rows
 
         // 1. Delete AI follow-ups
-        try {
-            const { error } = await supabase
-                .from('ai_followups')
-                .delete()
-                .not('id', 'is', null);
-            results.push({ table: 'ai_followups', success: !error, error: error?.message });
-        } catch (e) {
-            results.push({ table: 'ai_followups', success: false, error: String(e) });
-        }
+        const r1 = await safeDelete('ai_followups');
+        results.push({ table: 'ai_followups', ...r1 });
 
-        // 2. Delete scheduled messages
-        try {
-            const { error } = await supabase
-                .from('scheduled_messages')
-                .delete()
-                .not('id', 'is', null);
-            results.push({ table: 'scheduled_messages', success: !error, error: error?.message });
-        } catch (e) {
-            results.push({ table: 'scheduled_messages', success: false, error: String(e) });
-        }
+        // 2. Delete scheduled messages (may not exist)
+        const r2 = await safeDelete('scheduled_messages');
+        results.push({ table: 'scheduled_messages', ...r2 });
 
         // 3. Delete workflow executions
-        try {
-            const { error } = await supabase
-                .from('workflow_executions')
-                .delete()
-                .not('id', 'is', null);
-            results.push({ table: 'workflow_executions', success: !error, error: error?.message });
-        } catch (e) {
-            results.push({ table: 'workflow_executions', success: false, error: String(e) });
-        }
+        const r3 = await safeDelete('workflow_executions');
+        results.push({ table: 'workflow_executions', ...r3 });
 
         // 4. Delete ML behavior events
-        try {
-            const { error } = await supabase
-                .from('ml_behavior_events')
-                .delete()
-                .not('id', 'is', null);
-            results.push({ table: 'ml_behavior_events', success: !error, error: error?.message });
-        } catch (e) {
-            results.push({ table: 'ml_behavior_events', success: false, error: String(e) });
-        }
+        const r4 = await safeDelete('ml_behavior_events');
+        results.push({ table: 'ml_behavior_events', ...r4 });
 
         // 5. Delete lead goal completions
-        try {
-            const { error } = await supabase
-                .from('lead_goal_completions')
-                .delete()
-                .not('id', 'is', null);
-            results.push({ table: 'lead_goal_completions', success: !error, error: error?.message });
-        } catch (e) {
-            results.push({ table: 'lead_goal_completions', success: false, error: String(e) });
-        }
+        const r5 = await safeDelete('lead_goal_completions');
+        results.push({ table: 'lead_goal_completions', ...r5 });
 
         // 6. Delete conversations
-        try {
-            const { error } = await supabase
-                .from('conversations')
-                .delete()
-                .not('id', 'is', null);
-            results.push({ table: 'conversations', success: !error, error: error?.message });
-        } catch (e) {
-            results.push({ table: 'conversations', success: false, error: String(e) });
-        }
+        const r6 = await safeDelete('conversations');
+        results.push({ table: 'conversations', ...r6 });
 
         // 7. Delete leads
-        try {
-            const { error } = await supabase
-                .from('leads')
-                .delete()
-                .not('id', 'is', null);
-            results.push({ table: 'leads', success: !error, error: error?.message });
-        } catch (e) {
-            results.push({ table: 'leads', success: false, error: String(e) });
-        }
+        const r7 = await safeDelete('leads');
+        results.push({ table: 'leads', ...r7 });
 
         // 8. Delete connected pages
-        try {
-            const { error } = await supabase
-                .from('connected_pages')
-                .delete()
-                .not('id', 'is', null);
-            results.push({ table: 'connected_pages', success: !error, error: error?.message });
-        } catch (e) {
-            results.push({ table: 'connected_pages', success: false, error: String(e) });
-        }
+        const r8 = await safeDelete('connected_pages');
+        results.push({ table: 'connected_pages', ...r8 });
 
-        // Check for any errors
-        const failures = results.filter(r => !r.success);
+        // Check for any failures (skipped tables are OK)
+        const failures = results.filter(r => !r.success && !r.skipped);
 
         if (failures.length > 0) {
             console.error('[Reset Data] Some tables failed:', failures);
@@ -141,19 +93,15 @@ export async function POST(req: Request) {
             }, { status: 500 });
         }
 
+        const skipped = results.filter(r => r.skipped);
+        const deleted = results.filter(r => r.success && !r.skipped);
+
         return NextResponse.json({
             success: true,
             message: 'All user data has been reset. Bot knowledge, settings, and goals are preserved.',
+            deleted: deleted.map(r => r.table),
+            skipped: skipped.map(r => r.table),
             results,
-            preserved: [
-                'bot_settings',
-                'bot_goals',
-                'bot_rules',
-                'documents',
-                'pipeline_stages',
-                'workflows',
-                'ml_strategies',
-            ],
         });
 
     } catch (error) {
@@ -174,7 +122,7 @@ export async function GET() {
             'leads - All leads/contacts',
             'conversations - All chat history',
             'ai_followups - All AI follow-up records',
-            'scheduled_messages - All scheduled messages',
+            'scheduled_messages - All scheduled messages (if table exists)',
             'workflow_executions - All workflow runs',
             'ml_behavior_events - All ML tracking data',
             'lead_goal_completions - All goal completion records',
