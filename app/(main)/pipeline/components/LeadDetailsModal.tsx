@@ -599,6 +599,126 @@ export default function LeadDetailsModal({ leadId, isOpen, onClose, onDelete }: 
                                             </div>
                                         )}
 
+                                        {/* AI Autonomous Follow-up Status - NEW PROMINENT SECTION */}
+                                        <div className="bg-orange-50 border-2 border-orange-200 rounded-xl p-6">
+                                            <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                                                <Clock size={20} className="text-orange-600" />
+                                                AI Autonomous Follow-up
+                                            </h3>
+                                            {details.aiFollowups && details.aiFollowups.length > 0 ? (
+                                                <div className="space-y-3">
+                                                    {/* Show pending/scheduled follow-up prominently */}
+                                                    {details.aiFollowups.filter(f => f.status === 'pending' || f.status === 'scheduled').length > 0 ? (
+                                                        details.aiFollowups
+                                                            .filter(f => f.status === 'pending' || f.status === 'scheduled')
+                                                            .map((followup) => (
+                                                                <div key={followup.id} className="bg-white rounded-lg p-4 border-2 border-orange-300">
+                                                                    <div className="flex items-center gap-2 mb-2">
+                                                                        <div className="w-3 h-3 bg-orange-500 rounded-full animate-pulse"></div>
+                                                                        <span className="font-bold text-orange-700">Next Follow-up Scheduled</span>
+                                                                    </div>
+                                                                    {followup.scheduledFor && (
+                                                                        <div className="text-2xl font-bold text-orange-600 mb-2">
+                                                                            {new Date(followup.scheduledFor).toLocaleString('en-PH', {
+                                                                                weekday: 'short',
+                                                                                month: 'short',
+                                                                                day: 'numeric',
+                                                                                hour: 'numeric',
+                                                                                minute: '2-digit',
+                                                                                hour12: true
+                                                                            })}
+                                                                        </div>
+                                                                    )}
+                                                                    <div className="text-sm text-gray-600 mb-2">
+                                                                        <span className="font-medium">Type:</span> {followup.followupType}
+                                                                    </div>
+                                                                    {followup.aiReasoning && (
+                                                                        <div className="text-sm text-gray-600 bg-orange-100 rounded p-2 mt-2">
+                                                                            <span className="font-medium">AI Reason:</span> {followup.aiReasoning}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            ))
+                                                    ) : (
+                                                        <div className="text-gray-600 text-sm">
+                                                            No pending follow-ups scheduled
+                                                        </div>
+                                                    )}
+
+                                                    {/* Show recent sent follow-ups */}
+                                                    {details.aiFollowups.filter(f => f.status === 'sent').length > 0 && (
+                                                        <div className="mt-4 pt-4 border-t border-orange-200">
+                                                            <div className="text-xs text-gray-500 mb-2 font-semibold">Recent Sent Follow-ups</div>
+                                                            {details.aiFollowups
+                                                                .filter(f => f.status === 'sent')
+                                                                .slice(0, 3)
+                                                                .map((followup) => (
+                                                                    <div key={followup.id} className="text-sm text-gray-600 flex items-center gap-2 py-1">
+                                                                        <CheckCircle2 size={14} className="text-green-600" />
+                                                                        <span>
+                                                                            Sent {followup.sentAt && new Date(followup.sentAt).toLocaleDateString()}
+                                                                        </span>
+                                                                        <span className="text-gray-400">•</span>
+                                                                        <span className="text-gray-500">{followup.followupType}</span>
+                                                                    </div>
+                                                                ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <div className="text-gray-500 text-sm">
+                                                    No AI follow-ups have been scheduled for this lead yet.
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Best Contact Time - HIGHLIGHTED */}
+                                        {details.bestContactTimes && (
+                                            <div className="bg-teal-50 border-2 border-teal-200 rounded-xl p-6">
+                                                <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                                                    <Clock size={20} className="text-teal-600" />
+                                                    Best Time to Contact
+                                                </h3>
+                                                {details.bestContactTimes.bestContactTimes && details.bestContactTimes.bestContactTimes.length > 0 ? (
+                                                    <div className="space-y-3">
+                                                        {/* Top recommended time - highlighted */}
+                                                        <div className="bg-white rounded-lg p-4 border-2 border-teal-300">
+                                                            <div className="flex items-center gap-2 mb-2">
+                                                                <div className="w-3 h-3 bg-teal-500 rounded-full"></div>
+                                                                <span className="font-bold text-teal-700">Recommended Contact Time</span>
+                                                            </div>
+                                                            <div className="text-2xl font-bold text-teal-600">
+                                                                {details.bestContactTimes.bestContactTimes[0].dayOfWeek} {details.bestContactTimes.bestContactTimes[0].timeRange}
+                                                            </div>
+                                                            <div className="text-sm text-gray-500 mt-1">
+                                                                Confidence: {details.bestContactTimes.bestContactTimes[0].confidence}%
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Other good times */}
+                                                        {details.bestContactTimes.bestContactTimes.length > 1 && (
+                                                            <div className="grid grid-cols-2 gap-2">
+                                                                {details.bestContactTimes.bestContactTimes.slice(1, 5).map((window: BestContactTimeWindow, idx: number) => (
+                                                                    <div key={idx} className="bg-white rounded-lg p-3 border border-teal-100">
+                                                                        <div className="text-sm font-medium text-gray-900">
+                                                                            {window.dayOfWeek} {window.timeRange}
+                                                                        </div>
+                                                                        <div className="text-xs text-gray-500">
+                                                                            {window.confidence}% confidence
+                                                                        </div>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ) : (
+                                                    <div className="text-gray-500 text-sm">
+                                                        Not enough data yet to determine best contact times.
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+
                                         {/* Bot Goals Completed */}
                                         {details.goalCompletions && details.goalCompletions.length > 0 && (
                                             <div className="bg-green-50 rounded-xl p-6">
