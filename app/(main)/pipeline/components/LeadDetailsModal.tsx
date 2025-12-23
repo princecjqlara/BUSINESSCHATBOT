@@ -620,6 +620,7 @@ export default function LeadDetailsModal({ leadId, isOpen, onClose, onDelete }: 
                                                                     {followup.scheduledFor && (
                                                                         <div className="text-2xl font-bold text-orange-600 mb-2">
                                                                             {new Date(followup.scheduledFor).toLocaleString('en-PH', {
+                                                                                timeZone: 'Asia/Manila',
                                                                                 weekday: 'short',
                                                                                 month: 'short',
                                                                                 day: 'numeric',
