@@ -964,14 +964,17 @@ function SettingsContent() {
                                             body: JSON.stringify({ confirmReset: 'RESET_ALL_DATA' }),
                                         });
                                         const data = await res.json();
+                                        console.log('Reset response:', data);
                                         if (data.success) {
                                             setMessage('✅ All data has been reset successfully!');
                                             fetchConnectedPages();
                                         } else {
-                                            setMessage('❌ Reset failed: ' + (data.error || 'Unknown error'));
+                                            const errorDetails = data.failures?.map((f: { table: string; error?: string }) => `${f.table}: ${f.error}`).join(', ') || '';
+                                            setMessage('❌ Reset failed: ' + (data.error || data.message || 'Unknown error') + (errorDetails ? ' - ' + errorDetails : ''));
                                         }
                                     } catch (error) {
-                                        setMessage('❌ Reset failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
+                                        console.error('Reset error:', error);
+                                        setMessage('❌ Reset failed: Network error - ' + (error instanceof Error ? error.message : String(error)));
                                     }
                                 } else if (doubleConfirm !== null) {
                                     setMessage('Reset cancelled - you must type "RESET" exactly.');
