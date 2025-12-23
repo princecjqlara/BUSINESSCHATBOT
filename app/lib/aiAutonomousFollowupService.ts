@@ -133,13 +133,14 @@ export async function getLeadsNeedingFollowup(limit: number = 20): Promise<LeadF
         return [];
     }
 
-    // Minimal anti-spam cooldown (1 hour) - just to prevent rapid-fire messages
-    const minCooldownMs = 60 * 60 * 1000; // 1 hour
+    // Minimal anti-spam cooldown (30min) - just to prevent rapid-fire messages
+    const minCooldownMs = 30 * 60 * 1000; // 30 minutes
     const now = new Date();
     const minCooldownThreshold = new Date(now.getTime() - minCooldownMs);
 
-    // Only look at leads with activity in the last 7 days (active leads)
-    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    // Look at leads with activity in the last 30 days (expanded from 7 days)
+    // This ensures leads don't go "cold" - they stay in the system longer
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
     // Get active leads - let AI decide if they need follow-up
     const { data: leads, error } = await supabase
@@ -156,10 +157,10 @@ export async function getLeadsNeedingFollowup(limit: number = 20): Promise<LeadF
             pipeline_stages(name)
         `)
         .eq('bot_disabled', false)
-        .gt('last_message_at', sevenDaysAgo.toISOString()) // Only active leads (last 7 days)
+        .gt('last_message_at', thirtyDaysAgo.toISOString()) // Extended to 30 days (was 7)
         .or(`last_ai_followup_at.is.null,last_ai_followup_at.lt.${minCooldownThreshold.toISOString()}`) // Anti-spam only
-        .gt('message_count', 0) // Any conversation history
-        .order('last_message_at', { ascending: false }) // Most recent first
+        .gte('message_count', 0) // Include even leads with 0 messages (new leads)
+        .order('last_ai_followup_at', { ascending: true, nullsFirst: true }) // Prioritize leads never followed up
         .limit(limit);
 
     if (error) {
