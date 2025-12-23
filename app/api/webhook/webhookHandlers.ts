@@ -102,6 +102,7 @@ export async function handlePostWebhook(req: Request) {
                     // This is a message sent BY the page (human agent) TO a customer
                     // The recipient is the customer, start takeover for them
                     console.log('📢 MESSAGE ECHO detected! Human agent sent message to:', recipient_psid);
+                    console.log('[DEBUG TAKEOVER] Starting takeover for recipient_psid:', recipient_psid);
                     waitUntil(
                         startOrRefreshTakeover(recipient_psid).catch(err => {
                             console.error('Error starting takeover:', err);

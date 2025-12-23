@@ -182,7 +182,9 @@ export async function handleMessage(sender_psid: string, received_message: strin
     console.log('handleMessage called, generating response...');
 
     // Check if human takeover is active for this conversation
+    console.log('[DEBUG TAKEOVER] Checking takeover for sender_psid:', sender_psid);
     const takeoverActive = await isTakeoverActive(sender_psid);
+    console.log('[DEBUG TAKEOVER] Takeover active result:', takeoverActive);
     if (takeoverActive) {
         console.log('Human takeover active for', sender_psid, '- skipping AI response');
         return;
