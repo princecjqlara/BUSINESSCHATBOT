@@ -252,7 +252,7 @@ export async function GET(
                     id: followup.id,
                     status: followup.status,
                     followupType: followup.followup_type,
-                    message: followup.message,
+                    message: followup.message_text,
                     aiReasoning: followup.ai_reasoning,
                     urgency: followup.urgency,
                     scheduledFor: followup.scheduled_for,
