@@ -108,6 +108,53 @@ export default function LeadDetailsModal({ leadId, isOpen, onClose, onDelete }: 
     const [analysisLoading, setAnalysisLoading] = useState(false);
     const [analysisData, setAnalysisData] = useState<any>(null);
     const [deleting, setDeleting] = useState(false);
+    const [botPaused, setBotPaused] = useState(false);
+    const [pausingBot, setPausingBot] = useState(false);
+    const [pauseTimeout, setPauseTimeout] = useState<number>(8);
+
+    // Check if bot is paused on load
+    const checkBotPauseStatus = async (senderId: string) => {
+        try {
+            const res = await fetch(`/api/human-takeover?senderId=${senderId}`);
+            const data = await res.json();
+            setBotPaused(data.takeoverActive);
+            setPauseTimeout(data.timeoutMinutes || 8);
+        } catch (err) {
+            console.error('Error checking bot pause status:', err);
+        }
+    };
+
+    // Handle bot pause/resume
+    const handleBotPauseToggle = async () => {
+        if (!details?.lead.senderId) return;
+
+        setPausingBot(true);
+        try {
+            const action = botPaused ? 'resume' : 'pause';
+            const res = await fetch('/api/human-takeover', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    senderId: details.lead.senderId,
+                    action
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                setBotPaused(!botPaused);
+                if (data.action === 'paused') {
+                    setPauseTimeout(data.timeout || 8);
+                }
+            } else {
+                alert('Failed: ' + (data.error || 'Unknown error'));
+            }
+        } catch (err) {
+            console.error('Error toggling bot pause:', err);
+            alert('Failed to toggle bot pause');
+        } finally {
+            setPausingBot(false);
+        }
+    };
 
     const handleDelete = async () => {
         const confirmed = window.confirm(
@@ -152,6 +199,10 @@ export default function LeadDetailsModal({ leadId, isOpen, onClose, onDelete }: 
             }
             const data = await response.json();
             setDetails(data);
+            // Check bot pause status after loading details
+            if (data?.lead?.senderId) {
+                checkBotPauseStatus(data.lead.senderId);
+            }
         } catch (err) {
             setError(err instanceof Error ? err.message : 'An error occurred');
         } finally {
@@ -212,6 +263,24 @@ export default function LeadDetailsModal({ leadId, isOpen, onClose, onDelete }: 
                 <div className="flex items-center justify-between p-6 border-b border-gray-200">
                     <h2 className="text-2xl font-bold text-gray-900">Lead Details</h2>
                     <div className="flex items-center gap-2">
+                        {/* Pause/Resume Bot Button */}
+                        <button
+                            onClick={handleBotPauseToggle}
+                            disabled={pausingBot || loading}
+                            className={`px-3 py-1.5 rounded-lg font-medium text-sm flex items-center gap-1.5 transition-colors disabled:opacity-50 ${botPaused
+                                    ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                                    : 'bg-orange-100 text-orange-700 hover:bg-orange-200'
+                                }`}
+                            title={botPaused ? 'Resume AI bot' : `Pause bot for ${pauseTimeout} minutes`}
+                        >
+                            {pausingBot ? (
+                                <span className="animate-spin">⏳</span>
+                            ) : botPaused ? (
+                                <>▶️ Resume Bot</>
+                            ) : (
+                                <>⏸️ Pause Bot ({pauseTimeout}m)</>
+                            )}
+                        </button>
                         <button
                             onClick={handleDelete}
                             disabled={deleting}
