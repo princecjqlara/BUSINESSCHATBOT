@@ -123,3 +123,65 @@ export async function PATCH(req: Request) {
         return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
     }
 }
+
+// DELETE - Delete a lead and all related data
+export async function DELETE(req: Request) {
+    try {
+        const { searchParams } = new URL(req.url);
+        const leadId = searchParams.get('leadId');
+
+        if (!leadId) {
+            return NextResponse.json({ error: 'Lead ID is required' }, { status: 400 });
+        }
+
+        // Get lead info for cleanup
+        const { data: lead } = await supabase
+            .from('leads')
+            .select('sender_id')
+            .eq('id', leadId)
+            .single();
+
+        if (!lead) {
+            return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
+        }
+
+        // Delete related data in order (foreign key constraints)
+
+        // 1. Delete AI follow-ups
+        await supabase.from('ai_followups').delete().eq('lead_id', leadId);
+
+        // 2. Delete lead goal completions
+        await supabase.from('lead_goal_completions').delete().eq('lead_id', leadId);
+
+        // 3. Delete ML behavior events
+        await supabase.from('ml_behavior_events').delete().eq('lead_id', leadId);
+
+        // 4. Delete lead stage history
+        await supabase.from('lead_stage_history').delete().eq('lead_id', leadId);
+
+        // 5. Delete workflow executions
+        await supabase.from('workflow_executions').delete().eq('lead_id', leadId);
+
+        // 6. Delete conversations
+        await supabase.from('conversations').delete().eq('sender_id', lead.sender_id);
+
+        // 7. Finally, delete the lead
+        const { error: deleteError } = await supabase
+            .from('leads')
+            .delete()
+            .eq('id', leadId);
+
+        if (deleteError) {
+            console.error('Error deleting lead:', deleteError);
+            return NextResponse.json({ error: 'Failed to delete lead' }, { status: 500 });
+        }
+
+        return NextResponse.json({
+            success: true,
+            message: 'Lead and all related data deleted successfully'
+        });
+    } catch (error) {
+        console.error('Error deleting lead:', error);
+        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    }
+}

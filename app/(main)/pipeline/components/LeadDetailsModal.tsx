@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, Clock, User, Phone, Mail, MessageSquare, TrendingUp, Brain, Calendar, Award, BarChart3, Building2, Link2, Briefcase, UserCircle, Globe, Target, CheckCircle2, Zap, Send } from 'lucide-react';
+import { X, Clock, User, Phone, Mail, MessageSquare, TrendingUp, Brain, Calendar, Award, BarChart3, Building2, Link2, Briefcase, UserCircle, Globe, Target, CheckCircle2, Zap, Send, Trash2 } from 'lucide-react';
 import { BestContactTimesData, BestContactTimeWindow } from '@/app/lib/bestContactTimesService';
 
 interface LeadDetails {
@@ -97,15 +97,44 @@ interface LeadDetailsModalProps {
     leadId: string;
     isOpen: boolean;
     onClose: () => void;
+    onDelete?: () => void;
 }
 
-export default function LeadDetailsModal({ leadId, isOpen, onClose }: LeadDetailsModalProps) {
+export default function LeadDetailsModal({ leadId, isOpen, onClose, onDelete }: LeadDetailsModalProps) {
     const [loading, setLoading] = useState(true);
     const [details, setDetails] = useState<LeadDetails | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<'overview' | 'contact' | 'ml' | 'conversation' | 'analysis'>('overview');
     const [analysisLoading, setAnalysisLoading] = useState(false);
     const [analysisData, setAnalysisData] = useState<any>(null);
+    const [deleting, setDeleting] = useState(false);
+
+    const handleDelete = async () => {
+        const confirmed = window.confirm(
+            `Are you sure you want to delete ${details?.lead.name || 'this lead'}?\n\nThis will permanently delete:\n• All conversations\n• All AI follow-ups\n• All goal completions\n• All ML data\n\nThis action cannot be undone!`
+        );
+
+        if (!confirmed) return;
+
+        setDeleting(true);
+        try {
+            const res = await fetch(`/api/pipeline/leads?leadId=${leadId}`, {
+                method: 'DELETE',
+            });
+            const data = await res.json();
+
+            if (data.success) {
+                onClose();
+                onDelete?.();
+            } else {
+                alert('Failed to delete: ' + (data.error || 'Unknown error'));
+            }
+        } catch (error) {
+            alert('Failed to delete: ' + (error instanceof Error ? error.message : 'Unknown error'));
+        } finally {
+            setDeleting(false);
+        }
+    };
 
     useEffect(() => {
         if (isOpen && leadId) {
@@ -182,12 +211,22 @@ export default function LeadDetailsModal({ leadId, isOpen, onClose }: LeadDetail
                 {/* Header */}
                 <div className="flex items-center justify-between p-6 border-b border-gray-200">
                     <h2 className="text-2xl font-bold text-gray-900">Lead Details</h2>
-                    <button
-                        onClick={onClose}
-                        className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                    >
-                        <X size={20} />
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={handleDelete}
+                            disabled={deleting}
+                            className="p-2 hover:bg-red-100 rounded-lg transition-colors text-red-600 disabled:opacity-50"
+                            title="Delete lead"
+                        >
+                            <Trash2 size={20} />
+                        </button>
+                        <button
+                            onClick={onClose}
+                            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                        >
+                            <X size={20} />
+                        </button>
+                    </div>
                 </div>
 
                 {/* Content */}
@@ -617,9 +656,9 @@ export default function LeadDetailsModal({ leadId, isOpen, onClose }: LeadDetail
                                                         <div
                                                             key={followup.id}
                                                             className={`bg-white rounded-lg p-4 border ${followup.status === 'sent' ? 'border-green-200' :
-                                                                    followup.status === 'scheduled' ? 'border-orange-200' :
-                                                                        followup.status === 'pending' ? 'border-blue-200' :
-                                                                            'border-gray-200'
+                                                                followup.status === 'scheduled' ? 'border-orange-200' :
+                                                                    followup.status === 'pending' ? 'border-blue-200' :
+                                                                        'border-gray-200'
                                                                 }`}
                                                         >
                                                             <div className="flex items-start justify-between mb-2">
@@ -632,10 +671,10 @@ export default function LeadDetailsModal({ leadId, isOpen, onClose }: LeadDetail
                                                                         <Zap size={16} className="text-blue-600" />
                                                                     )}
                                                                     <span className={`px-2 py-1 text-xs rounded-md font-medium ${followup.status === 'sent' ? 'bg-green-100 text-green-700' :
-                                                                            followup.status === 'scheduled' ? 'bg-orange-100 text-orange-700' :
-                                                                                followup.status === 'pending' ? 'bg-blue-100 text-blue-700' :
-                                                                                    followup.status === 'failed' ? 'bg-red-100 text-red-700' :
-                                                                                        'bg-gray-100 text-gray-700'
+                                                                        followup.status === 'scheduled' ? 'bg-orange-100 text-orange-700' :
+                                                                            followup.status === 'pending' ? 'bg-blue-100 text-blue-700' :
+                                                                                followup.status === 'failed' ? 'bg-red-100 text-red-700' :
+                                                                                    'bg-gray-100 text-gray-700'
                                                                         }`}>
                                                                         {followup.status.toUpperCase()}
                                                                     </span>
@@ -644,8 +683,8 @@ export default function LeadDetailsModal({ leadId, isOpen, onClose }: LeadDetail
                                                                     </span>
                                                                     {followup.urgency && (
                                                                         <span className={`px-2 py-1 text-xs rounded-md ${followup.urgency === 'high' ? 'bg-red-100 text-red-700' :
-                                                                                followup.urgency === 'medium' ? 'bg-yellow-100 text-yellow-700' :
-                                                                                    'bg-gray-100 text-gray-600'
+                                                                            followup.urgency === 'medium' ? 'bg-yellow-100 text-yellow-700' :
+                                                                                'bg-gray-100 text-gray-600'
                                                                             }`}>
                                                                             {followup.urgency}
                                                                         </span>

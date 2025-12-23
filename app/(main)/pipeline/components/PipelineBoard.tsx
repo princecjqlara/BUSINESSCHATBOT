@@ -38,7 +38,7 @@ export default function PipelineBoard() {
     const [searchQuery, setSearchQuery] = useState('');
     const [filterStageId, setFilterStageId] = useState<string | 'all'>('all');
     const [isFilterOpen, setIsFilterOpen] = useState(false);
-    
+
     // Modal State
     const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -345,6 +345,7 @@ export default function PipelineBoard() {
                     leadId={selectedLeadId}
                     isOpen={isModalOpen}
                     onClose={handleCloseModal}
+                    onDelete={fetchData}
                 />
             )}
         </div>
