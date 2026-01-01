@@ -1,6 +1,7 @@
 import { getBotResponse, ImageContext } from '@/app/lib/chatService';
 import { extractAndStoreContactInfo } from '@/app/lib/contactExtractionService';
 import { isTakeoverActive } from '@/app/lib/humanTakeoverService';
+import { canUseBotForLead } from '@/app/lib/messengerService';
 import { analyzeImageForReceipt, isConfirmedReceipt } from '@/app/lib/receiptDetectionService';
 import { analyzeAndUpdateStage, getOrCreateLead, incrementMessageCount, moveLeadToReceiptStage, shouldAnalyzeStage } from '@/app/lib/pipelineService';
 import { computeBestContactTimes, storeBestContactTimes } from '@/app/lib/bestContactTimesService';
@@ -188,6 +189,18 @@ export async function handleMessage(sender_psid: string, received_message: strin
     if (takeoverActive) {
         console.log('Human takeover active for', sender_psid, '- skipping AI response');
         return;
+    }
+
+    // Check if bot is disabled for this lead (e.g., stop_on_completion goal achieved)
+    // Get page token first to fetch lead info
+    const pageTokenForCheck = await getPageToken(pageId);
+    const leadForCheck = await getOrCreateLead(sender_psid, pageTokenForCheck || undefined);
+    if (leadForCheck) {
+        const botEnabled = await canUseBotForLead(leadForCheck.id);
+        if (!botEnabled) {
+            console.log('[BOT DISABLED] Bot is disabled for lead', leadForCheck.id, '(sender:', sender_psid, ') - skipping AI response');
+            return;
+        }
     }
 
     // Send typing indicator immediately
@@ -378,6 +391,17 @@ export async function handleImageMessage(sender_psid: string, imageUrl: string, 
     if (takeoverActive) {
         console.log('Human takeover active for', sender_psid, '- skipping AI response for image');
         return;
+    }
+
+    // Check if bot is disabled for this lead (e.g., stop_on_completion goal achieved)
+    const pageTokenForCheck = await getPageToken(pageId);
+    const leadForCheck = await getOrCreateLead(sender_psid, pageTokenForCheck || undefined);
+    if (leadForCheck) {
+        const botEnabled = await canUseBotForLead(leadForCheck.id);
+        if (!botEnabled) {
+            console.log('[BOT DISABLED] Bot is disabled for lead', leadForCheck.id, '(sender:', sender_psid, ') - skipping AI response for image');
+            return;
+        }
     }
 
     try {
